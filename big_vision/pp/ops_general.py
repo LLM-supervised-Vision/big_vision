@@ -277,81 +277,98 @@ def get_setdefault(key, value):
     return data
   return _setdefault
 
-
 @Registry.register("preprocess_ops.choice")
-def get_choice(n="single", key=None, fewer_ok=False, inkey=None, outkey=None):
-  """Chooses the same `n` random entries of all `keys`.
+@utils.InKeyOutKey()
+def get_choice(empty_fallback=None):
+  """Randomly takes one entry out of a tensor after flattening."""
 
-  Args:
-    n: how many entries to randomly sample (without repeat). Possible values:
-      - int: that many entries (or fewer if there's fewer, see `fewer_ok`.)
-      - "single": The string "single" only chooses one and drop the leading dim.
-      - [min, max]: A pair means randomly take between min/max examples (incl.).
-    key: str or list of str: See Note.
-    fewer_ok: whether to fail when there's fewer than `n` elements to choose
-              from (and hence set static shape to `n`), or whether to allow it.
-              (and hence have unknown static shape).
-    inkey: str or list of str: See Note.
-    outkey: str or list of str: See Note.
+  def _choice(x):
+    x = tf.reshape(x, (-1,))  # Ensure it's a 1D array
 
-  Note:
-    If key/inkey/outkey is a list, then the same random entries are chosen for
-    all of the keys. Other than that, they function the same as InKeyOutKey.
+    # Append the fallback value so we gracefully handle empty cases.
+    x0 = tf.zeros(1, x.dtype) if empty_fallback is None else [empty_fallback]
+    x = tf.concat([x, x0], axis=0)
 
-    The outkey can also contain the placeholder `{key}` that'll be .
+    num_choices = tf.maximum(tf.shape(x)[0] - 1, 1)  # Don't sample x0.
+    return x[tf.random.uniform([], 0, num_choices, dtype=tf.int32)]
 
-  Examples:
-    choice(key="alt_text/text")
-    choice(n=128, key=["patches", "positions"])
-    choice(inkey=["questions_i18n", "answers_i18n"], outkey=["q", "a"])
-
-  Returns:
-    The pp op.
-  """
-
-  # Normalize keys:
-  inkeys = utils.maybe_repeat(inkey or key, 1)
-  outkeys = utils.maybe_repeat(outkey or key, 1)
-  outkeys = [ok.format(key=ik) for ok, ik in zip(outkeys, inkeys)]
-
-  # Let's DRY on this condition and give it a name.
-  is_varlen = isinstance(n, (list, tuple))
-  min_n = n[0] if is_varlen else 1 if n == "single" else n
-
-  def _choice(data):
-    nitems = tf.shape(data[inkeys[0]])[0]
-
-    # Sanity check that all keys have same leading dimension, and that is at
-    # least as large as the minimum requested output.
-    lengths = [tf.shape(data[k])[0] for k in inkeys]
-    checks = [tf.debugging.assert_equal(l, nitems) for l in lengths]
-    if not fewer_ok:  # Since we check for all-same, a single suffices here.
-      checks.append(tf.debugging.assert_greater_equal(nitems, min_n))
-    with tf.control_dependencies(checks):
-      nitems = tf.identity(nitems)
-
-    if n == "single":
-      index = tf.random.uniform([], 0, nitems, dtype=tf.int32)
-    else:
-      # Subsample by shuffling and taking first n, but...
-      indices = tf.random.shuffle(tf.range(nitems))
-      end = n
-      if is_varlen:
-        end = tf.random.uniform([], n[0], n[1] + 1, dtype=tf.int32)
-      # ...keep the order while subsampling (it might have a meaning, eg boxes)
-      indices = tf.sort(indices[:end])
-
-    for ik, ok in zip(inkeys, outkeys):
-      if n == "single":
-        result = data[ik][index]
-      else:
-        result = tf.gather(data[ik], indices, axis=0)
-        if not is_varlen:  # Give static shape when we can.
-          result = tf.ensure_shape(result, [n] + [None] * (result.ndim - 1))
-      data[ok] = result
-
-    return data
   return _choice
+
+
+# @Registry.register("preprocess_ops.choice")
+# def get_choice(n="single", key=None, fewer_ok=False, inkey=None, outkey=None):
+#   """Chooses the same `n` random entries of all `keys`.
+
+#   Args:
+#     n: how many entries to randomly sample (without repeat). Possible values:
+#       - int: that many entries (or fewer if there's fewer, see `fewer_ok`.)
+#       - "single": The string "single" only chooses one and drop the leading dim.
+#       - [min, max]: A pair means randomly take between min/max examples (incl.).
+#     key: str or list of str: See Note.
+#     fewer_ok: whether to fail when there's fewer than `n` elements to choose
+#               from (and hence set static shape to `n`), or whether to allow it.
+#               (and hence have unknown static shape).
+#     inkey: str or list of str: See Note.
+#     outkey: str or list of str: See Note.
+
+#   Note:
+#     If key/inkey/outkey is a list, then the same random entries are chosen for
+#     all of the keys. Other than that, they function the same as InKeyOutKey.
+
+#     The outkey can also contain the placeholder `{key}` that'll be .
+
+#   Examples:
+#     choice(key="alt_text/text")
+#     choice(n=128, key=["patches", "positions"])
+#     choice(inkey=["questions_i18n", "answers_i18n"], outkey=["q", "a"])
+
+#   Returns:
+#     The pp op.
+#   """
+
+#   # Normalize keys:
+#   inkeys = utils.maybe_repeat(inkey or key, 1)
+#   outkeys = utils.maybe_repeat(outkey or key, 1)
+#   outkeys = [ok.format(key=ik) for ok, ik in zip(outkeys, inkeys)]
+
+#   # Let's DRY on this condition and give it a name.
+#   is_varlen = isinstance(n, (list, tuple))
+#   min_n = n[0] if is_varlen else 1 if n == "single" else n
+
+#   def _choice(data):
+#     nitems = tf.shape(data[inkeys[0]])[0]
+
+#     # Sanity check that all keys have same leading dimension, and that is at
+#     # least as large as the minimum requested output.
+#     lengths = [tf.shape(data[k])[0] for k in inkeys]
+#     checks = [tf.debugging.assert_equal(l, nitems) for l in lengths]
+#     if not fewer_ok:  # Since we check for all-same, a single suffices here.
+#       checks.append(tf.debugging.assert_greater_equal(nitems, min_n))
+#     with tf.control_dependencies(checks):
+#       nitems = tf.identity(nitems)
+
+#     if n == "single":
+#       index = tf.random.uniform([], 0, nitems, dtype=tf.int32)
+#     else:
+#       # Subsample by shuffling and taking first n, but...
+#       indices = tf.random.shuffle(tf.range(nitems))
+#       end = n
+#       if is_varlen:
+#         end = tf.random.uniform([], n[0], n[1] + 1, dtype=tf.int32)
+#       # ...keep the order while subsampling (it might have a meaning, eg boxes)
+#       indices = tf.sort(indices[:end])
+
+#     for ik, ok in zip(inkeys, outkeys):
+#       if n == "single":
+#         result = data[ik][index]
+#       else:
+#         result = tf.gather(data[ik], indices, axis=0)
+#         if not is_varlen:  # Give static shape when we can.
+#           result = tf.ensure_shape(result, [n] + [None] * (result.ndim - 1))
+#       data[ok] = result
+
+#     return data
+#   return _choice
 
 
 def _shuffled_index(count, nitems, seed):

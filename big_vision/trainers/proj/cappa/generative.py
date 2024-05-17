@@ -227,23 +227,29 @@ def main(argv):
   repl_sharding = jax.sharding.NamedSharding(mesh, jax.sharding.PartitionSpec())
 
   write_note("Inferring shardings...")
-  params_sharding = bv_sharding.infer_sharding(
-      params_shape, mesh, axis_name="fsdp",
-      # TODO: implement scan for parameter sharding.
-      strategy=config.get("param_sharding", "replicated"),
-      extra_strategy_args=config.get("param_sharding_args", {}))
-  opt_sharding = bv_sharding.infer_sharding(
-      opt_shape, mesh, axis_name="fsdp",
-      strategy=config.get("optim_sharding", "replicated"),
-      extra_strategy_args=config.get("optim_sharding_args", {}))
+  train_state_shape = {"params": params_shape, "opt": opt_shape}
+
+  strategy = config.get("sharding_strategy", [(".*", "replicate")])
+  train_state_sharding = bv_sharding.infer_sharding(
+      train_state_shape, strategy=strategy, mesh=mesh)
+
+  # params_sharding = bv_sharding.infer_sharding(
+  #     params_shape, mesh, axis_name="fsdp",
+  #     # TODO: implement scan for parameter sharding.
+  #     strategy=config.get("param_sharding", "replicated"),
+  #     extra_strategy_args=config.get("param_sharding_args", {}))
+  # opt_sharding = bv_sharding.infer_sharding(
+  #     opt_shape, mesh, axis_name="fsdp",
+  #     strategy=config.get("optim_sharding", "replicated"),
+  #     extra_strategy_args=config.get("optim_sharding_args", {}))
 
   write_note("Transferring train_state to devices...")
   # RNG is always replicated
   rng_init = u.reshard(rng_init, repl_sharding)
 
   # Parameters and the optimizer are now global (distributed) jax arrays.
-  params = jax.jit(init, out_shardings=params_sharding)(rng_init)
-  opt = jax.jit(tx.init, out_shardings=opt_sharding)(params)
+  params = jax.jit(init, out_shardings=train_state_sharding["params"])(rng_init)
+  opt = jax.jit(tx.init, out_shardings=train_state_sharding["opt"])(params)
 
   rng, rng_loop = jax.random.split(rng, 2)
   rng_loop = u.reshard(rng_loop, repl_sharding)
@@ -252,7 +258,7 @@ def main(argv):
   # At this point we have everything we need to form a train state. It contains
   # all the parameters that are passed and updated by the main training step.
   train_state_sharding = {
-      "params": params_sharding, "opt": opt_sharding, "rng": repl_sharding}
+      "params": train_state_sharding['params'], "opt": train_state_sharding['opt'], "rng": repl_sharding}
   train_state = {
       "params": params, "opt": opt, "rng": rng_loop}
   del params, opt, rng_loop  # Delete to avoid memory leak or accidental reuse.
