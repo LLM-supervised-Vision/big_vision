@@ -1,7 +1,7 @@
 # pylint: disable=line-too-long
-r"""Trains a CapPa model (https://arxiv.org/abs/2306.07915) on laion400m/images.
+r"""Trains a CoCa model (https://arxiv.org/pdf/2205.01917) on laion400m/images.
 
-bash /home/austinwang/austin_big_vision/scripts/cappa.sh
+bash /home/austinwang/austin_big_vision/scripts/coca.sh
 """
 
 
@@ -80,7 +80,7 @@ def get_config(arg=None):
   config.keep_ckpt_steps = None  # 10_000
 
   # Model section
-  config.model_name = 'proj.cappa.cappa'
+  config.model_name = 'proj.coca.coca'
   config.model = ml_collections.ConfigDict()
   config.model.num_layers = 12
   config.model.num_heads = 12
@@ -90,7 +90,6 @@ def get_config(arg=None):
   config.model.patches = (patch_size, patch_size)
   config.model.seq_len = max_text_tokens
   config.model.posemb_type = 'learn'
-  config.model.scan = True
 
   # Decoder
   config.model.decoder_num_layers = 6
@@ -116,6 +115,8 @@ def get_config(arg=None):
   config.lr = 0.001
   config.wd = 0.0001
   config.schedule = schedule
+  config.contrastive_weight = 1.0
+  config.captioning_weight = 2.0
 
   config.seed = 0
 
