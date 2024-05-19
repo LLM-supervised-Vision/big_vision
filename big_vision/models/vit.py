@@ -162,13 +162,14 @@ class MAPHead(nn.Module):
   """Multihead Attention Pooling."""
   mlp_dim: Optional[int] = None  # Defaults to 4x input dim
   num_heads: int = 12
+  n_queries: int = 1
 
   @nn.compact
   def __call__(self, x):
     # TODO
     n, l, d = x.shape  # pylint: disable=unused-variable
     probe = self.param("probe", nn.initializers.xavier_uniform(),
-                       (1, 1, d), x.dtype)
+                       (1, self.n_queries, d), x.dtype)
     probe = jnp.tile(probe, [n, 1, 1])
 
     x = nn.MultiHeadDotProductAttention(
@@ -247,6 +248,11 @@ class _Model(nn.Module):
     elif self.pool_type == "tok":
       x = out["head_input"] = x[:, 0]
       encoded = encoded[:, 1:]
+    elif self.pool_type[:4] == "map:" and self.pool_type[4:].isdigit():
+      n_queries = int(self.pool_type[3:])
+      captioning_head = MAPHead(num_heads=self.num_heads, mlp_dim=self.mlp_dim, n_queries=n_queries)(x)
+      contrastive_head = MAPHead(num_heads=self.num_heads, mlp_dim=self.mlp_dim, n_queries=1)(x)
+      x = out["head_input"] = jnp.concatenate([captioning_head, contrastive_head], axis=1)
     elif self.pool_type == "none":
       pass
     else:
