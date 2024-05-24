@@ -43,6 +43,7 @@ import optax
 import tensorflow as tf
 
 from tensorflow.io import gfile
+import wandb
 
 # pylint: disable=logging-fstring-interpolation
 
@@ -123,7 +124,18 @@ def main(argv):
       info("%s", note)
 
   mw = u.BigVisionMetricWriter(xid, wid, workdir, config)
-
+  # Initialize wandb.
+  if config.get("wandb", False) and jax.process_index() == 0:
+    wandb.init(
+      project="cambrian_vlm",
+      entity="ziteng_wang",
+      tags=["cappa"],
+      name=workdir.split("/")[-1] if workdir else "cappa_temp_experiment",
+      job_type="train",
+      # id=experiment_id,
+      config=config,
+      resume="allow",
+    )
 ################################################################################
 #                                                                              #
 #                                Input Pipeline                                #
@@ -424,6 +436,7 @@ def main(argv):
       with u.chrono.log_timing("z/secs/update0", noop=step > first_step + 1):
         with mesh, nn.logical_axis_rules([("act_batch", ("replica", "fsdp"))]):  # pytype: disable=wrong-arg-types
           train_state, measurements = update_fn(train_state, batch)
+          if config.get("wandb", False) and jax.process_index() == 0: wandb.log(measurements)
 
     # On the first host, let's always profile a handful of early steps.
     if jax.process_index() == 0:
@@ -476,6 +489,7 @@ def main(argv):
               [("act_batch", ("replica", "fsdp"))]):  # pytype: disable=wrong-arg-types
             for key, value in evaluator.run(train_state):
               mw.measure(f"{prefix}{key}", jax.device_get(value))
+              if config.get("wandb", False) and jax.process_index() == 0: wandb.log({f"{prefix}{key}": jax.device_get(value)})
         u.chrono.resume()
     mw.step_end()
 
