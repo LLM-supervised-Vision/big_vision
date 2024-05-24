@@ -282,7 +282,7 @@ def main(argv):
 
       # contrastive loss # 
       logits = jnp.dot(zimg, ztxt.T)
-      logits = logits * extras["t"] + extras["b"]
+      logits = logits / extras["t"]
       eye = jnp.eye(zimg.shape[0])
       m1_diag1 = -jnp.ones_like(logits) + 2 * eye
       loglik = jax.nn.log_sigmoid(m1_diag1 * logits)

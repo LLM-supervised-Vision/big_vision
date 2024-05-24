@@ -179,7 +179,7 @@ class MAPHead(nn.Module):
     # TODO: dropout on head?
     y = nn.LayerNorm()(x)
     x = x + MlpBlock(mlp_dim=self.mlp_dim)(y)
-    return x[:, 0]
+    return x
 
 
 class _Model(nn.Module):
@@ -249,10 +249,10 @@ class _Model(nn.Module):
       x = out["head_input"] = x[:, 0]
       encoded = encoded[:, 1:]
     elif self.pool_type[:4] == "map:" and self.pool_type[4:].isdigit():
-      n_queries = int(self.pool_type[3:])
-      captioning_head = MAPHead(num_heads=self.num_heads, mlp_dim=self.mlp_dim, n_queries=n_queries)(x)
-      contrastive_head = MAPHead(num_heads=self.num_heads, mlp_dim=self.mlp_dim, n_queries=1)(x)
-      x = out["head_input"] = jnp.concatenate([captioning_head, contrastive_head], axis=1)
+      n_queries = int(self.pool_type[4:])
+      out['captioning_zimg'] = MAPHead(num_heads=self.num_heads, mlp_dim=self.mlp_dim, n_queries=n_queries)(x)
+      out['contrastive_zimg'] = MAPHead(num_heads=self.num_heads, mlp_dim=self.mlp_dim, n_queries=1)(x)
+      x = out["head_input"] = out['contrastive_zimg'].squeeze()
     elif self.pool_type == "none":
       pass
     else:
