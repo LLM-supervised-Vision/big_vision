@@ -339,6 +339,7 @@ class Model(nn.Module):
         scan=self.scan,
         remat_policy=self.remat_policy,
     )
+    # self.ln_cls = nn.LayerNorm(name="LayerNormCls") # post layer norm for contrastive_ztxt
     self.multimodal_decoder = Decoder(
         num_layers=self.decoder_num_layers or self.num_layers,
         mlp_dim=self.decoder_mlp_dim or self.mlp_dim,
@@ -395,16 +396,22 @@ class Model(nn.Module):
         max_decode_length=max_decode_length)
     logging.info("decode: txt_encoded shape: %s", txt_encoded.shape)
 
+    eos_indices = jnp.where(
+      targets == 1,
+      size=targets.shape[0],
+    ) # eos token is 1 and eos_indices is a tuple of 2 arrays
+    contrastive_ztxt = txt_encoded[eos_indices[0], eos_indices[1], :]
+    # contrastive_ztxt = self.ln_cls(contrastive_ztxt) # post layer norm for contrastive_ztxt
+
     logits = self.multimodal_decoder(
         encoded=encoded,
         targets=None,
-        txt_encoded=txt_encoded[:,:-1,:],
+        txt_encoded=txt_encoded, # [:,:-1,:],
         pos_emb=self.pos_emb_for_decoder,
         decoder_mask=decoder_mask,
         decode=decode,
         deterministic=not train,
         max_decode_length=max_decode_length)
-    contrastive_ztxt = txt_encoded[:,-1,:]
     return logits, contrastive_ztxt
 
   def __call__(self, image, text, *, decode=False,
@@ -430,14 +437,15 @@ class Model(nn.Module):
     out["t/parameter"] = self.t
 
     contrastive_zimg, captioning_zimg = self.encode(image, train=train)
-    logging.info("contrastive_zimg shape: %s", contrastive_zimg.shape)
     logging.info("captioning_zimg shape: %s", captioning_zimg.shape)
 
     decoded, contrastive_ztxt = self.decode(captioning_zimg, text, decode=decode, train=train)
-    logging.info("decoded shape: %s", decoded.shape)
+    logging.info("contrastive_zimg shape: %s", contrastive_zimg.shape)
     logging.info("contrastive_ztxt shape: %s", contrastive_ztxt.shape)
+    logging.info("out.keys(): %s", out.keys())
+    logging.info("decoded shape: %s", decoded.shape)
 
-    return contrastive_zimg, contrastive_ztxt, out, decoded
+    return contrastive_zimg.squeeze(), contrastive_ztxt, out, decoded
 
 
 def load(init_params, init_files, model_params=None,

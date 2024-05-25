@@ -27,12 +27,13 @@ def get_config(arg=None):
   res = 224
   patch_size = 16
   max_text_tokens = 64
+  add_bos = False
 
   pp_image = (f'resize({res})|value_range(-1,1)')
 
   def tokenizer(inkey, outkey):
     return (f'tokenize(max_len={max_text_tokens}, model="c4_en", '
-            f'eos="sticky", inkey="{inkey}", outkey="{outkey}")')
+            f'eos="sticky", add_bos={add_bos}, inkey="{inkey}", outkey="{outkey}")')
 
   pp_laion = (f'decode|{pp_image}|'
               'choice(inkey="caption", outkey="text")|'
