@@ -116,6 +116,7 @@ def get_config(arg=None):
   config.lr = 0.001
   config.wd = 0.0001
   config.schedule = schedule
+  config.wandb = True
 
   config.seed = 0
 

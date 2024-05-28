@@ -16,3 +16,4 @@ tfds-nightly
 tensorflow-text
 tensorflow-gan
 pycocoevalcap
+wandb
