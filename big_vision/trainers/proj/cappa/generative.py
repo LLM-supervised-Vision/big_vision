@@ -44,6 +44,7 @@ import tensorflow as tf
 
 from tensorflow.io import gfile
 import wandb
+wandb.login(key='97c3b77fabd233d22d7b9a71319fce93f7400469')
 
 # pylint: disable=logging-fstring-interpolation
 
