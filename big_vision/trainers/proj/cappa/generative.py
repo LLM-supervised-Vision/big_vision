@@ -44,7 +44,6 @@ import tensorflow as tf
 
 from tensorflow.io import gfile
 import wandb
-wandb.login(key='97c3b77fabd233d22d7b9a71319fce93f7400469')
 
 # pylint: disable=logging-fstring-interpolation
 
@@ -127,6 +126,7 @@ def main(argv):
   mw = u.BigVisionMetricWriter(xid, wid, workdir, config)
   # Initialize wandb.
   if config.get("wandb", False) and jax.process_index() == 0:
+    wandb.login(key='97c3b77fabd233d22d7b9a71319fce93f7400469')
     wandb.init(
       project="cambrian_vlm",
       entity="ziteng_wang",
