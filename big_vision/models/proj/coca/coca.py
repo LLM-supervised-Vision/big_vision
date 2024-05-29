@@ -156,20 +156,19 @@ class Decoder(nn.Module):
     Returns:
       output of a transformer decoder [B, L, V].
     """
+    logging_prefix = "Unimodal" if targets is not None else "Multimodal"
     if targets is None:
       # Multimodal input handling
-      logging.info("Multimodal input handling")
       assert encoded is not None and txt_encoded is not None, "For multimodal, encoded and txt_encoded must be provided."
-      logging.info("encoded.shape: %s", encoded.shape)
-      logging.info("txt_encoded.shape: %s", txt_encoded.shape)
+      logging.info(f"{logging_prefix} Decoder: encoded.shape: %s", encoded.shape)
       y = txt_encoded
+      logging.info(f"{logging_prefix} Decoder: (y = txt_encoded).shape: %s", txt_encoded.shape)
     else:
       # Unimodal input handling
-      logging.info("Unimodal input handling")
       assert encoded is None and txt_encoded is None, "For unimodal, only targets should be provided."
       y = targets.astype("int32")
-      logging.info("y.shape: %s", y.shape)
-      logging.info("decode: %s", decode)
+      logging.info(f"{logging_prefix} Decoder: (y = targets).shape: %s", y.shape)
+      logging.info(f"{logging_prefix} Decoder: decode: %s", decode)
       if not decode:
         if self.masked_pred_prob > 0.0 and not deterministic:
           # Binary random variable indicating whether to do masked prediction
@@ -198,13 +197,11 @@ class Decoder(nn.Module):
           decoder_mask = where(
               do_masked_pred, jnp.ones_like(decoder_mask), decoder_mask
           )
-
         else:
           y = shift_right(y)
       else:
         y = shift_right(y)
-      logging.info("y.shape: %s", y.shape)
-      logging.info("Starting embedding")
+      logging.info(f"{logging_prefix} Decoder: after shift right: y.shape: %s", y.shape)
       embed = nn.Embed(
           self.output_vocab_size + (1 if self.masked_pred_prob > 0.0 else 0),
           self.emb_dim,
@@ -212,16 +209,21 @@ class Decoder(nn.Module):
           embedding_init=nn.initializers.normal(stddev=1.0),
       )
       y = embed(y)
-      logging.info("y.shape: %s", y.shape)
+      logging.info(f"{logging_prefix} Decoder: after embedding: y.shape: %s", y.shape)
+
+      # concatenate cls-token to the end of the sequence
+      cls_emb = self.param("cls_emb", lambda key, shape, dtype: jnp.zeros(shape, dtype), (1, self.emb_dim), jnp.float32) # [1,768]
+      cls_emb = jnp.tile(cls_emb, (y.shape[0], 1, 1)) # [128,1,768]
+      y = jnp.concatenate([y[:,:-1,:], cls_emb], axis=1) # [128,64,768]
+      logging.info(f"{logging_prefix}: after cls token concat: y.shape: %s", y.shape)
 
       y = common.AddPositionEmbs(
           decode=decode, name="PosEmbedTargets")(y, pos_emb)
       # NOTE: One could apply dropout on the decoder's inputs here. Whether to do
       # it or not, and if so, what is the best/common way, is to be determined.
       # y = nn.Dropout(rate=self.dropout_rate)(y, deterministic=deterministic)
-      logging.info("y.shape: %s", y.shape)
+      logging.info(f"{logging_prefix} Decoder: after pos_emb: y.shape: %s", y.shape)
 
-    logging.info("Decoder input shape: %s", y.shape)
     if self.scan:
       # Mostly followed
       # https://github.com/google/maxtext/blob/4d99e30b3e0e0cb1d1aa11c7db7fffe18e301498/MaxText/layers.py#L1126
@@ -260,14 +262,15 @@ class Decoder(nn.Module):
                 deterministic=deterministic)
 
     y = nn.LayerNorm(name="LayerNorm")(y)
-    logging.info("Decoder output shape: %s", y.shape)
     if targets is not None: 
+      logging.info(f"{logging_prefix} Decoder: output y.shape: %s", y.shape)
       return y
     logits = nn.Dense(
         self.output_vocab_size,
         kernel_init=nn.initializers.zeros,
         name="LogitsDense",
     )(y)
+    logging.info(f"{logging_prefix} Decoder: logits shape: %s", logits.shape)
     return logits
 
 
@@ -399,6 +402,7 @@ class Model(nn.Module):
     logging.info("decode: txt_encoded shape: %s", txt_encoded.shape)
 
     contrastive_ztxt = txt_encoded[:,-1,:]
+    logging.info("decode: contrastive_ztxt shape: %s", contrastive_ztxt.shape)
 
     logits = self.multimodal_decoder(
         encoded=encoded,
@@ -409,6 +413,7 @@ class Model(nn.Module):
         decode=decode,
         deterministic=not train,
         max_decode_length=max_decode_length)
+    logging.info("decode: logits shape: %s", logits.shape)
     return logits, contrastive_ztxt
 
   def __call__(self, image, text, *, decode=True,
@@ -434,13 +439,13 @@ class Model(nn.Module):
     out["t/parameter"] = self.t
 
     contrastive_zimg, captioning_zimg = self.encode(image, train=train)
-    logging.info("captioning_zimg shape: %s", captioning_zimg.shape)
+    logging.info("Model: captioning_zimg shape: %s", captioning_zimg.shape)
 
     decoded, contrastive_ztxt = self.decode(captioning_zimg, text, decode=decode, train=train)
-    logging.info("contrastive_zimg shape: %s", contrastive_zimg.shape)
-    logging.info("contrastive_ztxt shape: %s", contrastive_ztxt.shape)
-    logging.info("out.keys(): %s", out.keys())
-    logging.info("decoded shape: %s", decoded.shape)
+    logging.info("Model: contrastive_zimg shape: %s", contrastive_zimg.shape)
+    logging.info("Model: contrastive_ztxt shape: %s", contrastive_ztxt.shape)
+    logging.info("Model: out.keys(): %s", out.keys())
+    logging.info("Model: decoded shape: %s", decoded.shape)
 
     return contrastive_zimg.squeeze(), contrastive_ztxt, out, decoded
 
