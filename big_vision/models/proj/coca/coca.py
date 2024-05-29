@@ -201,6 +201,8 @@ class Decoder(nn.Module):
 
         else:
           y = shift_right(y)
+      else:
+        y = shift_right(y)
       logging.info("y.shape: %s", y.shape)
       logging.info("Starting embedding")
       embed = nn.Embed(
@@ -401,7 +403,7 @@ class Model(nn.Module):
     logits = self.multimodal_decoder(
         encoded=encoded,
         targets=None,
-        txt_encoded=txt_encoded, # [:,:-1,:],
+        txt_encoded=txt_encoded[:,:-1,:],
         pos_emb=self.pos_emb_for_decoder,
         decoder_mask=decoder_mask,
         decode=decode,
