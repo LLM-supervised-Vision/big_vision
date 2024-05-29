@@ -276,16 +276,16 @@ def main(argv):
     rng, rng_model = jax.random.split(rng, 2)
 
     def loss_fn(params):
-      zimg, ztxt, extras, logits = model.apply(
+      zimg, ztxt, extras, captioning_logits = model.apply(
           {"params": params}, images, labels,
           train=True, rngs={"dropout": rng_model})
 
       # contrastive loss # 
-      logits = jnp.dot(zimg, ztxt.T)
-      logits = logits / extras["t"]
+      contrastive_logits = jnp.dot(zimg, ztxt.T)
+      contrastive_logits = contrastive_logits / extras["t"]
       eye = jnp.eye(zimg.shape[0])
-      m1_diag1 = -jnp.ones_like(logits) + 2 * eye
-      loglik = jax.nn.log_sigmoid(m1_diag1 * logits)
+      m1_diag1 = -jnp.ones_like(contrastive_logits) + 2 * eye
+      loglik = jax.nn.log_sigmoid(m1_diag1 * contrastive_logits)
       nll = -jnp.sum(loglik, axis=-1)
       co_loss = jnp.mean(nll)
 
@@ -295,7 +295,7 @@ def main(argv):
         weights = weights * label_masks
 
       ca_loss = u.weighted_softmax_xent(
-          logits=logits, labels=labels,
+          logits=captioning_logits, labels=labels,
           weights=weights, label_smoothing=config.get("label_smoothing", 0.0),
           reduction=True, normalize=True)
       
