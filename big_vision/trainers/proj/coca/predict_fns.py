@@ -31,10 +31,11 @@ import numpy as np
 def predict_fn_perplexity(
     train_state, batch, *, model):
   logits = model.apply(
-      {"params": train_state["params"]},
+      {"params": train_state["params"],"cache": {}},
       batch["image"],
       batch["labels"],
       train=False,
+      mutable=['cache'],
   )
   return logits, {"logits": logits}
 

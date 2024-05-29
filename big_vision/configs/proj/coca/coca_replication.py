@@ -117,7 +117,8 @@ def get_config(arg=None):
   config.wd = 0.0001
   config.schedule = schedule
   config.contrastive_weight = 1.0
-  config.captioning_weight = 2.0
+  # config.captioning_weight = 2.0
+  # config.wandb = True
 
   config.seed = 0
 

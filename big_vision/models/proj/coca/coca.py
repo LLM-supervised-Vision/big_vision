@@ -61,7 +61,7 @@ class EncoderDecoderBlock(nn.Module):
   mlp_dim: int
   num_heads: int
   dropout_rate: float = 0.
-  decode: bool = False
+  decode: bool = True
   use_bias: bool = True
 
   @nn.compact
@@ -370,7 +370,7 @@ class Model(nn.Module):
 
     return contrastive_zimg, captioning_zimg
 
-  def decode(self, encoded, targets, decode=False, train=False,
+  def decode(self, encoded, targets, decode=True, train=False,
              max_decode_length=None):
     """Applies Transformer decoder-branch on encoded-input and target.
 
@@ -396,12 +396,7 @@ class Model(nn.Module):
         max_decode_length=max_decode_length)
     logging.info("decode: txt_encoded shape: %s", txt_encoded.shape)
 
-    eos_indices = jnp.where(
-      targets == 1,
-      size=targets.shape[0],
-    ) # eos token is 1 and eos_indices is a tuple of 2 arrays
-    contrastive_ztxt = txt_encoded[eos_indices[0], eos_indices[1], :]
-    # contrastive_ztxt = self.ln_cls(contrastive_ztxt) # post layer norm for contrastive_ztxt
+    contrastive_ztxt = txt_encoded[:,-1,:]
 
     logits = self.multimodal_decoder(
         encoded=encoded,
@@ -414,7 +409,7 @@ class Model(nn.Module):
         max_decode_length=max_decode_length)
     return logits, contrastive_ztxt
 
-  def __call__(self, image, text, *, decode=False,
+  def __call__(self, image, text, *, decode=True,
                train=False, return_enc_features=False):
     """Applies Transformer model on the inputs.
 

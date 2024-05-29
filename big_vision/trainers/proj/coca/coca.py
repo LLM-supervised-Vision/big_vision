@@ -30,6 +30,7 @@ import optax
 import tensorflow as tf
 
 from tensorflow.io import gfile
+import wandb
 
 # pylint: disable=logging-fstring-interpolation
 
@@ -110,7 +111,19 @@ def main(argv):
       info("%s", note)
 
   mw = u.BigVisionMetricWriter(xid, wid, workdir, config)
-
+  # Initialize wandb.
+  if config.get("wandb", False) and jax.process_index() == 0:
+    wandb.login(key='97c3b77fabd233d22d7b9a71319fce93f7400469')
+    wandb.init(
+      project="cambrian_vlm",
+      entity="ziteng_wang",
+      tags=["coca"],
+      name=workdir.split("/")[-1] if workdir else "coca_temp_experiment",
+      job_type="train",
+      # id=experiment_id,
+      config=config,
+      resume="allow",
+    )
 ################################################################################
 #                                                                              #
 #                                Input Pipeline                                #
@@ -276,9 +289,9 @@ def main(argv):
     rng, rng_model = jax.random.split(rng, 2)
 
     def loss_fn(params):
-      zimg, ztxt, extras, captioning_logits = model.apply(
-          {"params": params}, images, labels,
-          train=True, rngs={"dropout": rng_model})
+      (zimg, ztxt, extras, captioning_logits), updated = model.apply(
+          {"params": params, "cache": {}}, images, labels,
+          train=True, rngs={"dropout": rng_model}, mutable=['cache'],)
 
       # contrastive loss # 
       contrastive_logits = jnp.dot(zimg, ztxt.T)
@@ -299,7 +312,7 @@ def main(argv):
           weights=weights, label_smoothing=config.get("label_smoothing", 0.0),
           reduction=True, normalize=True)
       
-      loss = co_loss * config.get("contrastive_weight") + ca_loss * config.get("captioning_weight")
+      loss = co_loss * config.get("contrastive_weight", 0.0) + ca_loss * config.get("captioning_weight", 0.0)
 
       return loss
 
@@ -315,6 +328,7 @@ def main(argv):
     measurements["l2_params"] = jnp.sqrt(sum([jnp.sum(p * p) for p in ps]))
     us = jax.tree_leaves(updates)
     measurements["l2_updates"] = jnp.sqrt(sum([jnp.sum(u * u) for u in us]))
+    measurements["lr_sched"] = sched_fns[0](u.put_cpu(bv_optax.get_count(train_state["opt"], jittable=True)))
 
     return {"params": params, "opt": opt, "rng": rng}, measurements
 
@@ -406,6 +420,7 @@ def main(argv):
         with mesh, nn.logical_axis_rules([("act_batch", ("replica", "fsdp"))]):  # pytype: disable=wrong-arg-types
           for key, value in evaluator.run(train_state):
             mw.measure(f"{prefix}{key}", value)
+            if config.get("wandb", False) and jax.process_index() == 0: wandb.log({f"{prefix}{key}": jax.device_get(value)})
 
 ################################################################################
 #                                                                              #
@@ -423,6 +438,7 @@ def main(argv):
       with u.chrono.log_timing("z/secs/update0", noop=step > first_step + 1):
         with mesh, nn.logical_axis_rules([("act_batch", ("replica", "fsdp"))]):  # pytype: disable=wrong-arg-types
           train_state, measurements = update_fn(train_state, batch)
+          if config.get("wandb", False) and jax.process_index() == 0: wandb.log(measurements)
 
     # On the first host, let's always profile a handful of early steps.
     if jax.process_index() == 0:
