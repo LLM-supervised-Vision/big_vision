@@ -35,8 +35,8 @@ def perplexity(predict_fn, normalize_by_seqlen):
       weights = weights * batch['label_masks']
 
     losses = u.weighted_softmax_xent(
-        logits=logits, labels=batch['labels'],
-        weights=weights, label_smoothing=0.0,
+        logits=logits, labels=batch['labels'][:,:-1],
+        weights=weights[:,:-1], label_smoothing=0.0,
         reduction=False, normalize=normalize_by_seqlen)
 
     return {'perplexity': losses}

@@ -1228,7 +1228,7 @@ class BigVisionMetricWriter:
         self.fname = os.path.join(workdir, "big_vision_metrics.txt")
       if config:
         with gfile.GFile(os.path.join(workdir, "config.json"), "w") as f:
-          f.write(config.to_json())
+          f.write(config.to_json_best_effort())
 
   def step_start(self, step):
     self.step = step

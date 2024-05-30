@@ -5,6 +5,7 @@ bash /home/austinwang/austin_big_vision/scripts/coca.sh
 """
 
 
+from big_vision.configs.proj.image_text import common
 from big_vision.configs import common_fewshot
 import big_vision.configs.common as bvcc
 import ml_collections
@@ -17,6 +18,8 @@ def get_config(arg=None):
                           total_steps=366_500,
                           batch_size=8*1024,
                           warmup_steps=10_000,
+                          res=224,
+                          eval_only=False,
                           )
 
   config.evals = {}
@@ -45,33 +48,51 @@ def get_config(arg=None):
   pp_coco = (f'decode|{pp_image}|'
              'coco_captions("captions")|choice(inkey="captions", outkey="text")|'
              f'{tokenizer("text", "labels")}|keep("image", "labels")')
-  config.evals.val_coco = {
-      'type': 'proj.cappa.perplexity',
-      'pred': 'perplexity',
-      'log_steps': 1000,
-      'data': dict(name='coco_captions', split='val'),  # num_examples=5_000
-      'pp_fn': pp_coco,
-  }
 
-  # Few-shot  metrics
-  config.evals.fewshot = common_fewshot.get_fewshot_lsr(
-      target_resolution=res, resize_resolution=int(256 / 224 * res))
-  config.evals.fewshot.type = 'fewshot_lsr'
-  config.evals.fewshot.log_steps = 5_000 if not config.runlocal else 5
-  config.evals.fewshot.representation_layer = 'pre_logits'
-  config.evals.fewshot.pred = 'enc_rep'
-  config.evals.fewshot.pp_eval = config.evals.fewshot.pp_train
+  config.contrastive_weight = 1.0
+  config.captioning_weight = 2.0
+  config.wandb = True
+  config.log_steps = 2000
 
-  # NOTE: Scoring of the entire imagenet validation set is rather slow:
-  # ~100 secs / 1k classes / host.
-  config.evals['imagenet/scoring'] = dict(
-      type='proj.cappa.scoring_classifier',
-      pred='score',
-      log_percent=0.1,
-      data=dict(name='imagenet2012', split='validation'),
-      pp_fn=f'decode|{pp_image}|keep("image", "label")',
-      pp_txt=tokenizer('label', 'labels'),
-  )
+  if config.get('contrastive_weight', 0.0) != 0.0:
+    config.evals.retrieval_coco = common.get_coco(
+        pp_img=f'resize({config.res})|value_range(-1, 1)',
+        pp_txt=tokenizer('texts','labels'),
+        log_steps=config.log_steps,
+    )
+    config.evals.zeroshot_imagenet = common.get_disclf(
+      sz=224, pp_txt=tokenizer('texts','labels'), 
+      dataset_names=('imagenet2012','imagenet_v2','imagenet2012_real'),
+      log_steps=config.log_steps,
+    )
+
+  if config.get('captioning_weight', 0.0) != 0.0:
+    config.evals.val_coco = {
+        'type': 'proj.cappa.perplexity',
+        'pred': 'perplexity',
+        'log_steps': config.log_steps,
+        'data': dict(name='coco_captions', split='val'),  # num_examples=5_000
+        'pp_fn': pp_coco,
+    }
+    # # Few-shot  metrics
+    # config.evals.fewshot = common_fewshot.get_fewshot_lsr(
+    #     target_resolution=res, resize_resolution=int(256 / 224 * res))
+    # config.evals.fewshot.type = 'fewshot_lsr'
+    # config.evals.fewshot.log_steps = config.log_steps if not config.runlocal else 5
+    # config.evals.fewshot.representation_layer = 'pre_logits'
+    # config.evals.fewshot.pred = 'enc_rep'
+    # config.evals.fewshot.pp_eval = config.evals.fewshot.pp_train
+
+    # NOTE: Scoring of the entire imagenet validation set is rather slow:
+    # ~100 secs / 1k classes / host.
+    config.evals['imagenet/scoring'] = dict(
+        type='proj.cappa.scoring_classifier',
+        pred='score',
+        log_percent=1,
+        data=dict(name='imagenet2012', split='validation'),
+        pp_fn=f'decode|{pp_image}|keep("image", "label")',
+        pp_txt=tokenizer('label', 'labels'),
+    )
 
   for e in config.evals.values():
     e.skip_first = True
@@ -93,7 +114,7 @@ def get_config(arg=None):
   config.model.posemb_type = 'learn'
 
   # Decoder
-  config.model.decoder_num_layers = 6
+  config.model.decoder_num_layers = 3
   # 0 values here mean to use the same value as for the encoder
   config.model.decoder_num_heads = 0
   config.model.decoder_mlp_dim = 0
@@ -108,18 +129,33 @@ def get_config(arg=None):
   config.grad_clip_norm = 1.0
   config.label_smoothing = 0.0
 
-  schedule = dict(decay_type='cosine',
+  config.warmup_steps = max(int(0.02 * config.total_steps), 100)
+  schedule = dict(decay_type='linear',
                   warmup_steps=config.warmup_steps
                   if not config.runlocal else 5)
 
   # Standard schedule
-  config.lr = 0.001
+  config.lr = 5e-4
   config.wd = 0.0001
   config.schedule = schedule
-  config.contrastive_weight = 1.0
-  # config.captioning_weight = 2.0
-  # config.wandb = True
 
   config.seed = 0
+
+  if config.eval_only:
+    config.total_steps = 0
+    config.input = {}
+    config.input.batch_size = config.batch_size if not config.runlocal else 8
+    config.input.data = dict(name='coco_captions', split='train', data_dir='gs://us-central2-storage/tensorflow_datasets')
+    pp_coco = (f'decode|{pp_image}|'
+              'coco_captions("captions")|choice(inkey="captions", outkey="text")|'
+              f'{tokenizer("text", "labels")}|keep("image", "labels")')
+    config.input.pp = pp_coco
+    config.optax_name = 'identity'
+    config.optax = {}
+    config.lr = 0.0
+
+    # config.mesh = [('data', -1)]
+    # config.sharding_strategy = [('params/.*', 'fsdp(axis="data")')]
+    # config.sharding_rules = [('act_batch', ('data',))]
 
   return config

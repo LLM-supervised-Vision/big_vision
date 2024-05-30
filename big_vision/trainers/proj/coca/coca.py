@@ -53,6 +53,28 @@ jax.config.update("jax_transfer_guard", "disallow")
 jax.config.update("jax_threefry_partitionable", True)
 
 
+# def softmax_loss(zimg, ztxt, temperature):
+#   """Softmax loss following the CLIP paper. Factorized to reduce memory cost."""
+
+#   def unidirectional_loss(z1, z2, t):
+#     logits = jnp.dot(z1, z2.T) * t
+#     # This a softmax across the larger gathered axis, taking advantage of the
+#     # fact that positives are known to be on the diagonal.
+#     loss = -(jnp.diag(logits) - jax.scipy.special.logsumexp(logits, axis=-1))
+#     acc = jnp.argmax(logits, axis=1) == jnp.arange(z1.shape[0])
+#     return loss.mean(), acc.mean()
+
+#   extras = {}
+#   loss = 0
+#   for name, row, col in [("i2t", zimg, ztxt), ("t2i", ztxt, zimg)]:
+#     loss_dir, acc_dir = unidirectional_loss(row, col, temperature)
+#     loss += 0.5 * loss_dir
+#     extras[f"{name}_acc"] = acc_dir
+#     extras[f"{name}_loss"] = loss_dir
+
+#   loss = jax.lax.pmean(loss, "batch")
+#   return loss, extras
+
 def main(argv):
   del argv
 
@@ -293,14 +315,11 @@ def main(argv):
           {"params": params, "cache": {}}, images, labels,
           train=True, rngs={"dropout": rng_model}, mutable=['cache'],)
 
-      # contrastive loss # 
-      contrastive_logits = jnp.dot(zimg, ztxt.T)
-      contrastive_logits = contrastive_logits / extras["t"]
-      eye = jnp.eye(zimg.shape[0])
-      m1_diag1 = -jnp.ones_like(contrastive_logits) + 2 * eye
-      loglik = jax.nn.log_sigmoid(m1_diag1 * contrastive_logits)
-      nll = -jnp.sum(loglik, axis=-1)
-      co_loss = jnp.mean(nll)
+      # # contrastive loss # 
+      contrastive_logits = jnp.dot(zimg, ztxt.T) / extras["t"]
+      l1 = -jnp.diag(jax.nn.log_softmax(contrastive_logits, axis=1))  # NLL img->txt
+      l2 = -jnp.diag(jax.nn.log_softmax(contrastive_logits, axis=0))  # NLL txt->img
+      co_loss = jnp.mean(0.5 * (l1 + l2))
 
       # captioning loss #
       weights = jnp.where(labels[:,:-1] != config.get("pad_token", 0), 1.0, 0.0)
@@ -328,7 +347,8 @@ def main(argv):
     measurements["l2_params"] = jnp.sqrt(sum([jnp.sum(p * p) for p in ps]))
     us = jax.tree_leaves(updates)
     measurements["l2_updates"] = jnp.sqrt(sum([jnp.sum(u * u) for u in us]))
-    measurements["lr_sched"] = sched_fns[0](u.put_cpu(bv_optax.get_count(train_state["opt"], jittable=True)))
+    measurements["lr"] = sched_fns[0](u.put_cpu(bv_optax.get_count(train_state["opt"], jittable=True))) * config.get("lr", 1.0)
+    measurements["examples_seen"] = u.chrono.accum_examples_seen
 
     return {"params": params, "opt": opt, "rng": rng}, measurements
 
@@ -491,6 +511,7 @@ def main(argv):
               [("act_batch", ("replica", "fsdp"))]):  # pytype: disable=wrong-arg-types
             for key, value in evaluator.run(train_state):
               mw.measure(f"{prefix}{key}", jax.device_get(value))
+              if config.get("wandb", False) and jax.process_index() == 0: wandb.log({f"{prefix}{key}": jax.device_get(value)})
         u.chrono.resume()
     mw.step_end()
 

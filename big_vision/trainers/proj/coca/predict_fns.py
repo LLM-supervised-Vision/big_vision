@@ -30,7 +30,7 @@ import numpy as np
 # maximal flexibility. Later `jit` will prune out things that are not needed.
 def predict_fn_perplexity(
     train_state, batch, *, model):
-  logits = model.apply(
+  (zimg, ztxt, extras, logits), updated = model.apply(
       {"params": train_state["params"],"cache": {}},
       batch["image"],
       batch["labels"],
@@ -59,7 +59,7 @@ def predict_fn_score(
       batch["image"],
       train=False,
       method=model.encode,
-  )
+  )[1]
 
   # This needs to be added by the evaluator. It is the pre-computed tokenized
   # list of all available labels. For ImageNet-1k, that's (1000, 13).
@@ -75,7 +75,7 @@ def predict_fn_score(
   def score_label(label):
     """Score (LogLik) each minibatch example (image) with a single `label`."""
     label_rep = jnp.tile(label, (encoded.shape[0], 1))
-    logits = model.apply(
+    logits, _ = model.apply(
         {"params": train_state["params"]},
         encoded,
         label_rep,
@@ -87,8 +87,8 @@ def predict_fn_score(
     # this label. We turn the softmax_xent's NLL into LL so higher = better.
     return -u.weighted_softmax_xent(
         logits=logits,
-        labels=label_rep,
-        weights=(label_rep > 0).astype(jnp.float32),  # Ignore <PAD> (=0).
+        labels=label_rep[:,:-1],
+        weights=(label_rep > 0).astype(jnp.float32)[:,:-1],  # Ignore <PAD> (=0).
         reduction=False,
         normalize=False,
     )
@@ -109,9 +109,24 @@ def make_prompt(prompt, tokenizer_path, seq_len=None):
   return prompt
 
 
+def eval_logits_fn(train_state, batch, *, model):
+  (zimg, ztxt, out, _), _ = model.apply(
+      {"params": train_state["params"],"cache": {}},
+      batch.get("image", None), batch.get("labels", None), mutable=['cache'])
+  return zimg, ztxt, out
+
+def eval_loss_fn(train_state, batch, *, model):
+  (_, _, _, logits), _ = model.apply({"params": train_state["params"]}, batch["image"], mutable=['cache'])
+  loss_fn = getattr(u, "softmax_xent") # config.get("loss", "sigmoid_xent"))
+  return {
+      "loss": loss_fn(logits=logits, labels=batch["labels"], reduction=False)
+  }
+
 def get_predict_fns(model):
   """Returns `predict_fns` for evaluators."""
   fns = {
+      "predict": eval_logits_fn,
+      "loss": eval_loss_fn,
       "perplexity": predict_fn_perplexity,
       "score": predict_fn_score,
       "enc_rep": predict_fn_enc_rep,

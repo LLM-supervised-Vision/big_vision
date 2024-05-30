@@ -373,7 +373,7 @@ class Model(nn.Module):
     if return_enc_features:
       return encoded, out
 
-    return contrastive_zimg, captioning_zimg
+    return contrastive_zimg.squeeze(), captioning_zimg
 
   def decode(self, encoded, targets, decode=True, train=False,
              max_decode_length=None):
@@ -389,13 +389,31 @@ class Model(nn.Module):
     Returns:
       logits array from transformer decoder [B, L, V].
     """
-    decoder_mask = None if decode else nn.make_causal_mask(targets)
+    unimodal_decoder_mask = None if decode else nn.make_causal_mask(targets)
+    multimodal_decoder_mask = None if decode else nn.make_causal_mask(targets[:, :-1])
+    # if decode:
+    #   # Prepare the unimodal decoder mask
+    #   unimodal_decoder_mask = nn.make_causal_mask(targets) # [128,1,64,64]
+    #   cls_mask = unimodal_decoder_mask[:,:,-1,:-1].squeeze() # [128,63]
+    #   new_cls_mask = jnp.where(targets[:,:-1] == 0, 0, cls_mask) # [128,63]
+    #   new_cls_mask = jnp.concatenate([new_cls_mask, jnp.ones((new_cls_mask.shape[0], 1))], axis=1) # [128,65]
+    #   new_cls_mask = new_cls_mask.reshape((new_cls_mask.shape[0], 1, 1, new_cls_mask.shape[1]))
+    #   zeros = jnp.zeros((new_cls_mask.shape[0], 1, new_cls_mask.shape[3]-1, new_cls_mask.shape[3]))
+    #   new_cls_mask = jnp.concatenate([zeros, new_cls_mask], axis=2)
+    #   unimodal_decoder_mask = jnp.where(new_cls_mask + unimodal_decoder_mask == 0, unimodal_decoder_mask, new_cls_mask)
+    #   logging.info("decode: unimodal_decoder_mask.shape: %s", unimodal_decoder_mask.shape)
+    #   logging.info("decode: unimodal_decoder_mask.shape: %s", unimodal_decoder_mask.shape)
+    #   # Prepare the multimodal decoder mask
+    #   multimodal_decoder_mask = nn.make_causal_mask(targets[:,:-1]) # [128,1,63,63]
+    #   logging.info("decode: multimodal_decoder_mask.shape: %s", multimodal_decoder_mask.shape)
+    # else: 
+    #   unimodal_decoder_mask, multimodal_decoder_mask = None, None
     txt_encoded = self.unimodal_decoder(
         encoded=None,
         targets=targets,
         txt_encoded=None,
         pos_emb=self.pos_emb_for_decoder,
-        decoder_mask=decoder_mask,
+        decoder_mask=unimodal_decoder_mask,
         decode=decode,
         deterministic=not train,
         max_decode_length=max_decode_length)
@@ -403,17 +421,19 @@ class Model(nn.Module):
 
     contrastive_ztxt = txt_encoded[:,-1,:]
     logging.info("decode: contrastive_ztxt shape: %s", contrastive_ztxt.shape)
-
-    logits = self.multimodal_decoder(
-        encoded=encoded,
-        targets=None,
-        txt_encoded=txt_encoded[:,:-1,:],
-        pos_emb=self.pos_emb_for_decoder,
-        decoder_mask=decoder_mask,
-        decode=decode,
-        deterministic=not train,
-        max_decode_length=max_decode_length)
-    logging.info("decode: logits shape: %s", logits.shape)
+    if encoded is not None:
+      logits = self.multimodal_decoder(
+          encoded=encoded,
+          targets=None,
+          txt_encoded=txt_encoded[:,:-1,:],
+          pos_emb=None,
+          decoder_mask=multimodal_decoder_mask,
+          decode=decode,
+          deterministic=not train,
+          max_decode_length=max_decode_length)
+      logging.info("decode: logits shape: %s", logits.shape)
+    else:
+      logits = None
     return logits, contrastive_ztxt
 
   def __call__(self, image, text, *, decode=True,
@@ -438,16 +458,20 @@ class Model(nn.Module):
     out["t"] = jnp.exp(self.t)
     out["t/parameter"] = self.t
 
-    contrastive_zimg, captioning_zimg = self.encode(image, train=train)
-    logging.info("Model: captioning_zimg shape: %s", captioning_zimg.shape)
+    contrastive_zimg, captioning_zimg, contrastive_ztxt, decoded = None, None, None, None
+    assert image is not None or text is not None, "At least one of image or text must be provided."
+    if image is not None:
+      contrastive_zimg, captioning_zimg = self.encode(image, train=train)
+      logging.info("Model: contrastive_zimg shape: %s", contrastive_zimg.shape)
+      logging.info("Model: captioning_zimg shape: %s", captioning_zimg.shape)
 
-    decoded, contrastive_ztxt = self.decode(captioning_zimg, text, decode=decode, train=train)
-    logging.info("Model: contrastive_zimg shape: %s", contrastive_zimg.shape)
-    logging.info("Model: contrastive_ztxt shape: %s", contrastive_ztxt.shape)
-    logging.info("Model: out.keys(): %s", out.keys())
-    logging.info("Model: decoded shape: %s", decoded.shape)
+    if text is not None:
+      decoded, contrastive_ztxt = self.decode(captioning_zimg, text, decode=decode, train=train)
+      logging.info("Model: contrastive_ztxt shape: %s", contrastive_ztxt.shape)
+      logging.info("Model: out.keys(): %s", out.keys())
+      if image is not None: logging.info("Model: decoded shape: %s", decoded.shape)
 
-    return contrastive_zimg.squeeze(), contrastive_ztxt, out, decoded
+    return contrastive_zimg, contrastive_ztxt, out, decoded
 
 
 def load(init_params, init_files, model_params=None,
