@@ -347,8 +347,11 @@ def main(argv):
     measurements["l2_params"] = jnp.sqrt(sum([jnp.sum(p * p) for p in ps]))
     us = jax.tree_leaves(updates)
     measurements["l2_updates"] = jnp.sqrt(sum([jnp.sum(u * u) for u in us]))
-    measurements["lr"] = sched_fns[0](u.put_cpu(bv_optax.get_count(train_state["opt"], jittable=True))) * config.get("lr", 1.0)
-    measurements["examples_seen"] = u.chrono.accum_examples_seen
+    step_count = bv_optax.get_count(opt, jittable=True)
+    lr_schedule = sched_fns[0](u.put_cpu(step_count))
+    measurements['step'] = step_count
+    measurements["lr"] = lr_schedule * config.get("lr", 1.0)
+    # measurements["examples_seen"] = u.chrono.accum_examples_seen
 
     return {"params": params, "opt": opt, "rng": rng}, measurements
 
@@ -440,7 +443,6 @@ def main(argv):
         with mesh, nn.logical_axis_rules([("act_batch", ("replica", "fsdp"))]):  # pytype: disable=wrong-arg-types
           for key, value in evaluator.run(train_state):
             mw.measure(f"{prefix}{key}", value)
-            if config.get("wandb", False) and jax.process_index() == 0: wandb.log({f"{prefix}{key}": jax.device_get(value)})
 
 ################################################################################
 #                                                                              #
