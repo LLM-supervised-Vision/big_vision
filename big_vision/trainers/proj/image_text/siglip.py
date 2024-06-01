@@ -47,6 +47,7 @@ import optax
 import tensorflow as tf
 
 from tensorflow.io import gfile
+import wandb
 
 
 config_flags.DEFINE_config_file(
@@ -116,7 +117,21 @@ def main(argv):
       info("%s", note)
 
   mw = u.BigVisionMetricWriter(xid, wid, workdir, config)
-
+  # Initialize wandb.
+  if config.get("wandb", False) and jax.process_index() == 0:
+    wandb.login(key='97c3b77fabd233d22d7b9a71319fce93f7400469')
+    tag_dict = {"softmax": "clip", "sigmoid": "siglip"}
+    tag = tag_dict[config.get("loss_fn", "sigmoid")]
+    wandb.init(
+      project="cambrian_vlm",
+      entity="ziteng_wang",
+      tags=[tag],
+      name=workdir.split("/")[-1] if workdir else f"{tag}_temp_experiment",
+      job_type="train",
+      # id=experiment_id,
+      config=config,
+      resume="allow",
+    )
   # Allow for things like timings as early as possible!
   u.chrono.inform(measure=mw.measure, write_note=write_note)
 
@@ -460,6 +475,7 @@ def main(argv):
       with u.chrono.log_timing("z/secs/update0", noop=step > first_step + 1):
         with mesh, nn.logical_axis_rules(sharding_rules):
           train_state, measurements = update_fn(train_state, rng_loop, batch)
+          if config.get("wandb", False) and jax.process_index() == 0: wandb.log(measurements)
 
     # On the first host, let's always profile a handful of early steps.
     if jax.process_index() == 0:
@@ -509,6 +525,7 @@ def main(argv):
           with mesh, nn.logical_axis_rules(sharding_rules):
             for key, value in evaluator.run(train_state):
               mw.measure(f"{prefix}{key}", jax.device_get(value))
+              if config.get("wandb", False) and jax.process_index() == 0: wandb.log({f"{prefix}{key}": jax.device_get(value)})
         u.chrono.resume()
     mw.step_end()
 
