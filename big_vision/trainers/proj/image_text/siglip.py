@@ -288,24 +288,34 @@ def main(argv):
       zimg, ztxt, extras = model.apply(
           {"params": params}, images, labels,
           train=True, rngs={"dropout": rng_model})
-      logits = jnp.dot(zimg, ztxt.T)
-      logits = logits * extras["t"] + extras["b"]
-      eye = jnp.eye(zimg.shape[0])
+      match config.get("loss_fn", "softmax"):
+        case "softmax":
+          contrastive_logits = jnp.dot(zimg, ztxt.T) / extras["t"]
+          l1 = -jnp.diag(jax.nn.log_softmax(contrastive_logits, axis=1))  # NLL img->txt
+          l2 = -jnp.diag(jax.nn.log_softmax(contrastive_logits, axis=0))  # NLL txt->img
+          co_loss = jnp.mean(0.5 * (l1 + l2))
+          return co_loss
+        case "sigmoid":
+          logits = jnp.dot(zimg, ztxt.T)
+          logits = logits * extras["t"] + extras["b"]
+          eye = jnp.eye(zimg.shape[0])
 
-      # Standard sigmoid computes everything twice, once assuming positive
-      # labels and once assuming negative ones. But here we know exactly where
-      # to find positives (on "me" diagonal) and negatives (everywhere else),
-      # so compute each one's loss only once:
-      m1_diag1 = -jnp.ones_like(logits) + 2 * eye
-      loglik = jax.nn.log_sigmoid(m1_diag1 * logits)
+          # Standard sigmoid computes everything twice, once assuming positive
+          # labels and once assuming negative ones. But here we know exactly where
+          # to find positives (on "me" diagonal) and negatives (everywhere else),
+          # so compute each one's loss only once:
+          m1_diag1 = -jnp.ones_like(logits) + 2 * eye
+          loglik = jax.nn.log_sigmoid(m1_diag1 * logits)
 
-      # Normalize by npos per column, but that's one, so just sum.
-      nll = -jnp.sum(loglik, axis=-1)
+          # Normalize by npos per column, but that's one, so just sum.
+          nll = -jnp.sum(loglik, axis=-1)
 
-      # NOTE: same as concat'ing me/ot along axis -1 above.
-      l = jnp.mean(nll)
+          # NOTE: same as concat'ing me/ot along axis -1 above.
+          l = jnp.mean(nll)
 
-      return l
+          return l
+        case _:
+          raise NotImplementedError(f"Unrecognized loss {config.loss_fn=}")
 
     params, opt = train_state["params"], train_state["opt"]
     loss, grads = jax.value_and_grad(loss_fn)(params)

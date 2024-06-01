@@ -36,7 +36,7 @@ def get_config(arg=None):
 
   def tokenizer(inkey, outkey):
     return (f'tokenize(max_len={max_text_tokens}, model="c4_en", '
-            f'eos="coca", add_bos={add_bos}, inkey="{inkey}", outkey="{outkey}")')
+            f'eos="sticky", add_bos={add_bos}, inkey="{inkey}", outkey="{outkey}")')
 
   pp_laion = (f'decode|{pp_image}|'
               'choice(inkey="caption", outkey="text")|'

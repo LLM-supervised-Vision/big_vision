@@ -179,6 +179,8 @@ class MAPHead(nn.Module):
     # TODO: dropout on head?
     y = nn.LayerNorm()(x)
     x = x + MlpBlock(mlp_dim=self.mlp_dim)(y)
+    if self.n_queries == 1:
+      x = x[:, 0]
     return x
 
 
