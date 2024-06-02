@@ -138,7 +138,7 @@ class Decoder(nn.Module):
                txt_encoded,
                pos_emb,
                decoder_mask=None,
-               decode=True,
+               decode=False,
                deterministic=True,
                max_decode_length=None):
     """Applies Transformer model on the inputs.
@@ -171,6 +171,7 @@ class Decoder(nn.Module):
       logging.info(f"{logging_prefix} Decoder: decode: %s", decode)
       if not decode:
         if self.masked_pred_prob > 0.0 and not deterministic:
+          # Masked Parallel Language Modeling in training mode.
           # Binary random variable indicating whether to do masked prediction
 
           def _add_random_masks(a):
@@ -199,8 +200,7 @@ class Decoder(nn.Module):
           )
         else:
           y = shift_right(y)
-      else:
-        y = shift_right(y)
+
       logging.info(f"{logging_prefix} Decoder: after shift right: y.shape: %s", y.shape)
       embed = nn.Embed(
           self.output_vocab_size + (1 if self.masked_pred_prob > 0.0 else 0),
@@ -212,9 +212,9 @@ class Decoder(nn.Module):
       logging.info(f"{logging_prefix} Decoder: after embedding: y.shape: %s", y.shape)
 
       # concatenate cls-token to the end of the sequence
-      cls_emb = self.param("cls_emb", lambda key, shape, dtype: jnp.zeros(shape, dtype), (1, self.emb_dim), jnp.float32) # [1,768]
-      cls_emb = jnp.tile(cls_emb, (y.shape[0], 1, 1)) # [128,1,768]
-      y = jnp.concatenate([y[:,:-1,:], cls_emb], axis=1) # [128,64,768]
+      cls_emb = self.param("cls_emb", lambda key, shape, dtype: jnp.zeros(shape, dtype), (1, self.emb_dim), jnp.float32) # [1,E]
+      cls_emb = jnp.tile(cls_emb, (y.shape[0], 1, 1)) # [B,1,E]
+      y = jnp.concatenate([y, cls_emb], axis=1) # [B,L,E]
       logging.info(f"{logging_prefix}: after cls token concat: y.shape: %s", y.shape)
 
       y = common.AddPositionEmbs(
@@ -263,6 +263,8 @@ class Decoder(nn.Module):
 
     y = nn.LayerNorm(name="LayerNorm")(y)
     if targets is not None: 
+      # text projection
+      y = nn.Dense(y.shape[-1], name="head")(y)
       logging.info(f"{logging_prefix} Decoder: output y.shape: %s", y.shape)
       return y
     logits = nn.Dense(
@@ -324,10 +326,10 @@ class Model(nn.Module):
         remat_policy=self.remat_policy,
     )
 
-    self.pos_emb_for_decoder = vit.get_posemb(
+    self.pos_emb_for_unimodal_decoder = vit.get_posemb(
         self,
         self.posemb_type,
-        (1, self.seq_len),
+        (1, self.seq_len+1),
         self.decoder_emb_dim or self.emb_dim,
         "pos_embedding_decoder",
     )
@@ -375,7 +377,7 @@ class Model(nn.Module):
 
     return contrastive_zimg.squeeze(), captioning_zimg
 
-  def decode(self, encoded, targets, decode=True, train=False,
+  def decode(self, encoded, targets, decode=False, train=False,
              max_decode_length=None):
     """Applies Transformer decoder-branch on encoded-input and target.
 
@@ -389,30 +391,35 @@ class Model(nn.Module):
     Returns:
       logits array from transformer decoder [B, L, V].
     """
-    unimodal_decoder_mask = None if decode else nn.make_causal_mask(targets)
-    multimodal_decoder_mask = None if decode else nn.make_causal_mask(targets[:, :-1])
-    # if decode:
-    #   # Prepare the unimodal decoder mask
-    #   unimodal_decoder_mask = nn.make_causal_mask(targets) # [128,1,64,64]
-    #   cls_mask = unimodal_decoder_mask[:,:,-1,:-1].squeeze() # [128,63]
-    #   new_cls_mask = jnp.where(targets[:,:-1] == 0, 0, cls_mask) # [128,63]
-    #   new_cls_mask = jnp.concatenate([new_cls_mask, jnp.ones((new_cls_mask.shape[0], 1))], axis=1) # [128,65]
-    #   new_cls_mask = new_cls_mask.reshape((new_cls_mask.shape[0], 1, 1, new_cls_mask.shape[1]))
-    #   zeros = jnp.zeros((new_cls_mask.shape[0], 1, new_cls_mask.shape[3]-1, new_cls_mask.shape[3]))
-    #   new_cls_mask = jnp.concatenate([zeros, new_cls_mask], axis=2)
-    #   unimodal_decoder_mask = jnp.where(new_cls_mask + unimodal_decoder_mask == 0, unimodal_decoder_mask, new_cls_mask)
-    #   logging.info("decode: unimodal_decoder_mask.shape: %s", unimodal_decoder_mask.shape)
-    #   logging.info("decode: unimodal_decoder_mask.shape: %s", unimodal_decoder_mask.shape)
-    #   # Prepare the multimodal decoder mask
-    #   multimodal_decoder_mask = nn.make_causal_mask(targets[:,:-1]) # [128,1,63,63]
-    #   logging.info("decode: multimodal_decoder_mask.shape: %s", multimodal_decoder_mask.shape)
-    # else: 
-    #   unimodal_decoder_mask, multimodal_decoder_mask = None, None
+    # unimodal_decoder_mask = None if decode else nn.make_causal_mask(jnp.empty((targets.shape[0], targets.shape[1]+1))) # [B,1,L+1,L+1]
+    # multimodal_decoder_mask = None if decode else nn.make_causal_mask(targets) # [B,1,L,L]
+    if decode:
+      unimodal_decoder_mask, multimodal_decoder_mask = None, None
+    else: 
+      # Prepare the unimodal decoder mask
+      unimodal_decoder_mask = nn.make_causal_mask(jnp.empty((targets.shape[0], targets.shape[1]+1))) # [B,1,L+1,L+1]
+      cls_mask = unimodal_decoder_mask[:,:,-1,:-1].squeeze() # [B,L]
+
+      # new_cls_mask = jnp.concatenate([new_cls_mask, jnp.ones((new_cls_mask.shape[0], 1))], axis=1) # [B,L+1]
+      # new_cls_mask = new_cls_mask.reshape((new_cls_mask.shape[0], 1, 1, new_cls_mask.shape[1])) # [B,1,1,L+1]
+      # zeros = jnp.zeros((new_cls_mask.shape[0], 1, new_cls_mask.shape[3]-1, new_cls_mask.shape[3])) # [B,1,L,L+1]
+      # new_cls_mask = jnp.concatenate([zeros, new_cls_mask], axis=2) # [B,1,L+1,L+1]
+      new_cls_mask = jnp.where(targets == 0, 0, cls_mask) # [B,L]
+      new_cls_mask = jnp.pad(new_cls_mask, ((0,0),(0,1)), mode='constant', constant_values=1) # [B,L+1]
+      new_cls_mask = new_cls_mask[:,None,None,:] # [B,1,1,L+1]
+      new_cls_mask = jnp.pad(new_cls_mask, ((0,0),(0,0),(targets.shape[1],0),(0,0)), mode='constant', constant_values=0)
+
+      unimodal_decoder_mask = jnp.where(new_cls_mask + unimodal_decoder_mask == 2, unimodal_decoder_mask, new_cls_mask)
+      logging.info("decode: unimodal_decoder_mask.shape: %s", unimodal_decoder_mask.shape)
+      logging.info("decode: unimodal_decoder_mask.shape: %s", unimodal_decoder_mask.shape)
+      # Prepare the multimodal decoder mask
+      multimodal_decoder_mask = nn.make_causal_mask(targets) # [B,1,L,L]
+      logging.info("decode: multimodal_decoder_mask.shape: %s", multimodal_decoder_mask.shape)
     txt_encoded = self.unimodal_decoder(
         encoded=None,
         targets=targets,
         txt_encoded=None,
-        pos_emb=self.pos_emb_for_decoder,
+        pos_emb=self.pos_emb_for_unimodal_decoder,
         decoder_mask=unimodal_decoder_mask,
         decode=decode,
         deterministic=not train,
@@ -436,7 +443,7 @@ class Model(nn.Module):
       logits = None
     return logits, contrastive_ztxt
 
-  def __call__(self, image, text, *, decode=True,
+  def __call__(self, image, text, *, decode=False,
                train=False, return_enc_features=False):
     """Applies Transformer model on the inputs.
 
@@ -462,6 +469,8 @@ class Model(nn.Module):
     assert image is not None or text is not None, "At least one of image or text must be provided."
     if image is not None:
       contrastive_zimg, captioning_zimg = self.encode(image, train=train)
+      out["img/norm"] = jnp.linalg.norm(contrastive_zimg, axis=1, keepdims=True)
+      out["img/normalized"] = contrastive_zimg = contrastive_zimg / (out["img/norm"] + 1e-8)
       logging.info("Model: contrastive_zimg shape: %s", contrastive_zimg.shape)
       logging.info("Model: captioning_zimg shape: %s", captioning_zimg.shape)
 
@@ -470,6 +479,8 @@ class Model(nn.Module):
       logging.info("Model: contrastive_ztxt shape: %s", contrastive_ztxt.shape)
       logging.info("Model: out.keys(): %s", out.keys())
       if image is not None: logging.info("Model: decoded shape: %s", decoded.shape)
+      out["txt/norm"] = jnp.linalg.norm(contrastive_ztxt, axis=1, keepdims=True)
+      out["txt/normalized"] = contrastive_ztxt = contrastive_ztxt / (out["txt/norm"] + 1e-8)
 
     return contrastive_zimg, contrastive_ztxt, out, decoded
 

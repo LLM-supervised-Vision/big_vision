@@ -322,12 +322,12 @@ def main(argv):
       co_loss = jnp.mean(0.5 * (l1 + l2))
 
       # captioning loss #
-      weights = jnp.where(labels[:,:-1] != config.get("pad_token", 0), 1.0, 0.0)
+      weights = jnp.where(labels != config.get("pad_token", 0), 1.0, 0.0)
       if label_masks is not None:
         weights = weights * label_masks
 
       ca_loss = u.weighted_softmax_xent(
-          logits=captioning_logits, labels=labels[:,:-1],
+          logits=captioning_logits, labels=labels,
           weights=weights, label_smoothing=config.get("label_smoothing", 0.0),
           reduction=True, normalize=True)
       

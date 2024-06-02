@@ -87,8 +87,8 @@ def predict_fn_score(
     # this label. We turn the softmax_xent's NLL into LL so higher = better.
     return -u.weighted_softmax_xent(
         logits=logits,
-        labels=label_rep[:,:-1],
-        weights=(label_rep > 0).astype(jnp.float32)[:,:-1],  # Ignore <PAD> (=0).
+        labels=label_rep,
+        weights=(label_rep > 0).astype(jnp.float32),  # Ignore <PAD> (=0).
         reduction=False,
         normalize=False,
     )
