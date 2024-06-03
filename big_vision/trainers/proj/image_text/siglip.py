@@ -344,6 +344,11 @@ def main(argv):
     measurements["l2_params"] = jnp.sqrt(sum([jnp.sum(p * p) for p in ps]))
     us = jax.tree_leaves(updates)
     measurements["l2_updates"] = jnp.sqrt(sum([jnp.sum(u * u) for u in us]))
+    step_count = bv_optax.get_count(opt, jittable=True)
+    lr_schedule = sched_fns[0](u.put_cpu(step_count))
+    measurements['step'] = step_count
+    measurements["lr"] = lr_schedule * config.get("lr", 1.0)
+    measurements["lr_schedule"] = lr_schedule
 
     return {"params": params, "opt": opt}, measurements
 

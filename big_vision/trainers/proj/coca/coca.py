@@ -351,6 +351,7 @@ def main(argv):
     lr_schedule = sched_fns[0](u.put_cpu(step_count))
     measurements['step'] = step_count
     measurements["lr"] = lr_schedule * config.get("lr", 1.0)
+    measurements["lr_schedule"] = lr_schedule
     # measurements["examples_seen"] = u.chrono.accum_examples_seen
 
     return {"params": params, "opt": opt, "rng": rng}, measurements

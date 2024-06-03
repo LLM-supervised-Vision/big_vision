@@ -105,7 +105,7 @@ def get_config(arg=None):
   config.model.out_dim = (None, EMBDIM)  # (image_out_dim, text_out_dim)
   config.model.temperature_init = 10.0
   config.model.bias_init = -10.0
-  config.loss_fn = "softmax" # softmax, sigmoid
+  config.loss_fn = "sigmoid" # softmax, sigmoid
 
   if VARIANT[0] == 'B':
     config.optax_name = 'scale_by_adam'
