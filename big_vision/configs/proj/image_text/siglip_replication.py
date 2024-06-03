@@ -36,7 +36,7 @@ def get_config(arg=None):
   """The base configuration."""
   arg = bvcc.parse_arg(
     arg, res=224, runlocal=False, token_len=16, init='', img_head=False, 
-    batch_size=1024, scan=True, fsdp=4, dtype='float32', debug=True,
+    batch_size=1024, scan=True, fsdp=4, dtype='float32', loss_fn="sigmoid",debug=True,
   )
   config = ConfigDict()
 
@@ -103,9 +103,9 @@ def get_config(arg=None):
   config.model.text = dict(variant=TXTVARIANT, vocab_size=VOCAB,scan=arg.scan)
 
   config.model.out_dim = (None, EMBDIM)  # (image_out_dim, text_out_dim)
-  config.model.temperature_init = 10.0
-  config.model.bias_init = -10.0
-  config.loss_fn = "sigmoid" # softmax, sigmoid
+  config.loss_fn = arg.loss_fn # softmax, sigmoid
+  config.model.temperature_init = 10.0 if config.loss_fn == "sigmoid" else 1/0.07
+  config.model.bias_init = -10.0 if config.loss_fn == "sigmoid" else None
 
   if VARIANT[0] == 'B':
     config.optax_name = 'scale_by_adam'

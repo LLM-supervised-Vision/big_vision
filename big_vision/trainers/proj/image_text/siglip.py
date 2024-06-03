@@ -305,7 +305,7 @@ def main(argv):
           train=True, rngs={"dropout": rng_model})
       match config.get("loss_fn", "softmax"):
         case "softmax":
-          contrastive_logits = jnp.dot(zimg, ztxt.T) / extras["t"]
+          contrastive_logits = jnp.dot(zimg, ztxt.T) * extras["t"]
           l1 = -jnp.diag(jax.nn.log_softmax(contrastive_logits, axis=1))  # NLL img->txt
           l2 = -jnp.diag(jax.nn.log_softmax(contrastive_logits, axis=0))  # NLL txt->img
           co_loss = jnp.mean(0.5 * (l1 + l2))
