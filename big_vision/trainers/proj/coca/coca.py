@@ -333,7 +333,7 @@ def main(argv):
       
       loss = co_loss * config.get("contrastive_weight", 0.0) + ca_loss * config.get("captioning_weight", 0.0)
 
-      return loss
+      return loss, {"training_loss": loss, "contrastive_loss": co_loss, "captioning_loss": ca_loss}
 
     params, opt = train_state["params"], train_state["opt"]
     loss, grads = jax.value_and_grad(loss_fn)(params)
