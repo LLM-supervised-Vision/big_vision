@@ -18,6 +18,8 @@ def get_config(arg=None):
                           total_steps=366_500,
                           batch_size=8*1024,
                           warmup_steps=10_000,
+                          lr=1e-4,
+                          dtype='float32',
                           res=224,
                           eval_only=False,
                           debug=False,
@@ -138,7 +140,7 @@ def get_config(arg=None):
   config.model.decoder_bias = False
 
   config.model.scan = True
-  config.model.dtype_mm = 'bfloat16'
+  config.model.dtype_mm = config.dtype # 'bfloat16'
   config.model.temperature_init = 1.0/0.07
 
   config.optax_name = 'big_vision.scale_by_adafactor'
@@ -152,7 +154,7 @@ def get_config(arg=None):
                   if not config.runlocal else 5)
 
   # Standard schedule
-  config.lr = 5e-4
+  config.lr = config.lr # 5e-5
   config.wd = 0.01
   config.schedule = schedule
 
