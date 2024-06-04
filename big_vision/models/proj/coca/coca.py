@@ -309,7 +309,7 @@ class Model(nn.Module):
 
   scan: bool = False
   remat_policy: str = "nothing_saveable"
-  temperature_init: float = 1.0
+  temperature_init: float = 1.0/0.07
 
   def setup(self):
 

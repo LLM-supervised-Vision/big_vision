@@ -20,6 +20,7 @@ def get_config(arg=None):
                           warmup_steps=10_000,
                           res=224,
                           eval_only=False,
+                          debug=False,
                           )
 
   config.evals = {}
@@ -51,7 +52,7 @@ def get_config(arg=None):
 
   config.contrastive_weight = 1.0
   config.captioning_weight = 2.0
-  config.wandb = True
+  config.wandb = not config.debug
   config.log_steps = 2000
 
   if config.get('contrastive_weight', 0.0) != 0.0:
@@ -114,7 +115,7 @@ def get_config(arg=None):
   config.model.posemb_type = 'learn'
 
   # Decoder
-  config.model.decoder_num_layers = 3
+  config.model.decoder_num_layers = 12
   # 0 values here mean to use the same value as for the encoder
   config.model.decoder_num_heads = 0
   config.model.decoder_mlp_dim = 0
@@ -123,6 +124,10 @@ def get_config(arg=None):
   config.model.masked_pred_prob = 0.0
   config.model.masking_ratio = 1.0
   config.model.decoder_bias = False
+
+  config.scan = True
+  config.dtype = 'bfloat16'
+  config.model.temperature_init = 1.0/0.07
 
   config.optax_name = 'big_vision.scale_by_adafactor'
   config.optax = dict(beta2_cap=0.999)
