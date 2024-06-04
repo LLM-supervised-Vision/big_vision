@@ -309,6 +309,7 @@ class Model(nn.Module):
 
   scan: bool = False
   remat_policy: str = "nothing_saveable"
+  dtype_mm: str = "float32"
   temperature_init: float = 1.0/0.07
 
   def setup(self):
@@ -324,6 +325,7 @@ class Model(nn.Module):
         pool_type=self.pool_type,
         scan=self.scan,
         remat_policy=self.remat_policy,
+        dtype_mm=self.dtype_mm,
     )
 
     self.pos_emb_for_unimodal_decoder = vit.get_posemb(

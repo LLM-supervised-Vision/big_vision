@@ -117,8 +117,13 @@ def get_config(arg=None):
   config.mesh = [("data",-1)]
   config.sharding_strategy = [('.*', f'fsdp(axis="data", min_size_to_shard_mb={arg.fsdp})')]
 
-  config.lr = 1e-3 if arg.batch_size!=32_768 else 3e-4
-  config.wd = 1e-4 if arg.batch_size!=32_768 else 3e-5
+  if config.loss_fn == "sigmoid":
+    config.lr = 1e-3 if arg.batch_size!=32_768 else 3e-4
+    config.wd = 1e-4 if arg.batch_size!=32_768 else 3e-5
+  elif config.loss_fn == "softmax":
+    config.lr = 1e-3
+    config.wd = 0.2
+
   warmup_steps = max(int(0.03 * config.total_steps), 100)
   config.schedule = [
       ('.*', dict(decay_type='cosine', warmup_steps=warmup_steps)),
