@@ -336,11 +336,10 @@ def main(argv):
       return loss, {"training_loss": loss, "contrastive_loss": co_loss, "captioning_loss": ca_loss}
 
     params, opt = train_state["params"], train_state["opt"]
-    loss, grads = jax.value_and_grad(loss_fn)(params)
+    (loss, measurements), grads = jax.value_and_grad(loss_fn, has_aux=True)(params)
     updates, opt = tx.update(grads, opt, params)
     params = optax.apply_updates(params, updates)
 
-    measurements = {"training_loss": loss}
     gs = jax.tree_leaves(bv_optax.replace_frozen(config.schedule, grads, 0.))
     measurements["l2_grads"] = jnp.sqrt(sum([jnp.sum(g * g) for g in gs]))
     ps = jax.tree_leaves(params)
@@ -352,6 +351,7 @@ def main(argv):
     measurements['step'] = step_count
     measurements["lr"] = lr_schedule * config.get("lr", 1.0)
     measurements["lr_schedule"] = lr_schedule
+
     # measurements["examples_seen"] = u.chrono.accum_examples_seen
 
     return {"params": params, "opt": opt, "rng": rng}, measurements
