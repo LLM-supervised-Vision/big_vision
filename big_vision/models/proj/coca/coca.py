@@ -261,12 +261,15 @@ class Decoder(nn.Module):
                 y, encoded, decoder_mask=decoder_mask,
                 deterministic=deterministic)
 
-    y = nn.LayerNorm(name="LayerNorm")(y)
     if targets is not None: 
       # text projection
-      y = nn.Dense(y.shape[-1], name="head")(y)
-      logging.info(f"{logging_prefix} Decoder: output y.shape: %s", y.shape)
-      return y
+      contrastive_ztxt = nn.LayerNorm(name="LayerNormCls")(y[:,-1,:])
+      captioning_ztxt = y[:,:-1,:]
+      logging.info(f"{logging_prefix} Decoder: output contrastive_ztxt.shape: %s", contrastive_ztxt.shape)
+      logging.info(f"{logging_prefix} Decoder: output captioning_ztxt.shape: %s", captioning_ztxt.shape)
+      return contrastive_ztxt, captioning_ztxt
+
+    y = nn.LayerNorm(name="LayerNorm")(y)
     logits = nn.Dense(
         self.output_vocab_size,
         kernel_init=nn.initializers.zeros,
@@ -417,7 +420,8 @@ class Model(nn.Module):
       # Prepare the multimodal decoder mask
       multimodal_decoder_mask = nn.make_causal_mask(targets) # [B,1,L,L]
       logging.info("decode: multimodal_decoder_mask.shape: %s", multimodal_decoder_mask.shape)
-    txt_encoded = self.unimodal_decoder(
+
+    contrastive_ztxt, captioning_ztxt = self.unimodal_decoder(
         encoded=None,
         targets=targets,
         txt_encoded=None,
@@ -426,15 +430,14 @@ class Model(nn.Module):
         decode=decode,
         deterministic=not train,
         max_decode_length=max_decode_length)
-    logging.info("decode: txt_encoded shape: %s", txt_encoded.shape)
-
-    contrastive_ztxt = txt_encoded[:,-1,:]
     logging.info("decode: contrastive_ztxt shape: %s", contrastive_ztxt.shape)
+    logging.info("decode: captioning_ztxt shape: %s", captioning_ztxt.shape)
+
     if encoded is not None:
       logits = self.multimodal_decoder(
           encoded=encoded,
           targets=None,
-          txt_encoded=txt_encoded[:,:-1,:],
+          txt_encoded=captioning_ztxt,
           pos_emb=None,
           decoder_mask=multimodal_decoder_mask,
           decode=decode,
