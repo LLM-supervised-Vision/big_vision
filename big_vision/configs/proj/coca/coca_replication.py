@@ -152,7 +152,7 @@ def get_config(arg=None):
                   if not config.runlocal else 5)
 
   # Standard schedule
-  config.lr = 1e-3
+  config.lr = 5e-4
   config.wd = 0.01
   config.schedule = schedule
 
