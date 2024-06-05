@@ -295,7 +295,7 @@ class Model(nn.Module):
   input_seq_len: int = 768
   posemb_type: str = "learn"
   patch_dropout: float = 0.
-  pool_type: str = "map:196"
+  pool_type: str = "map:256"
 
   # Decoder:
   decoder_num_heads: int = 0

@@ -138,14 +138,14 @@ def get_config(arg=None):
   config.model.dec_dropout_rate = 0.0
   config.model.masked_pred_prob = 0.0
   config.model.masking_ratio = 1.0
-  config.model.decoder_bias = False
+  config.model.decoder_bias = True
 
   config.model.scan = True
   config.model.dtype_mm = config.dtype # 'bfloat16'
   config.model.temperature_init = 1.0/0.07
 
   config.optax_name = 'big_vision.scale_by_adafactor'
-  config.optax = dict(beta2_cap=0.999)
+  config.optax = dict(beta2_cap=0.95)
   config.grad_clip_norm = 1.0
   config.label_smoothing = 0.0
 
