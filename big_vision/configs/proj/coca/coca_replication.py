@@ -18,6 +18,7 @@ def get_config(arg=None):
                           total_steps=366_500,
                           batch_size=8*1024,
                           warmup_steps=10_000,
+                          warmup_ratio=0.15,
                           lr=1e-4,
                           dtype='float32',
                           res=224,
@@ -148,7 +149,7 @@ def get_config(arg=None):
   config.grad_clip_norm = 1.0
   config.label_smoothing = 0.0
 
-  config.warmup_steps = max(int(0.02 * config.total_steps), 100)
+  config.warmup_steps = max(int(config.warmup_ratio * config.total_steps), 100)
   schedule = dict(decay_type='linear',
                   warmup_steps=config.warmup_steps
                   if not config.runlocal else 5)
