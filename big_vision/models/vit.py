@@ -91,6 +91,7 @@ class Encoder1DBlock(nn.Module):
     y = out["sa"] = nn.MultiHeadDotProductAttention(
         num_heads=self.num_heads,
         kernel_init=nn.initializers.xavier_uniform(),
+        normalize_qk=True,
         deterministic=deterministic,
         dtype=self.dtype_mm,
     )(y, y)
