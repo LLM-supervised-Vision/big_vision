@@ -173,7 +173,7 @@ class MAPHead(nn.Module):
     probe = jnp.tile(probe, [n, 1, 1])
 
     x = nn.MultiHeadDotProductAttention(
-        num_heads=self.num_heads,
+        num_heads=self.num_heads, normalize_qk=True,
         kernel_init=nn.initializers.xavier_uniform())(probe, x)
 
     # TODO: dropout on head?

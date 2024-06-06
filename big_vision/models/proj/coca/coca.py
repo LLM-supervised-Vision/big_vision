@@ -84,7 +84,7 @@ class EncoderDecoderBlock(nn.Module):
     # Decoder block.
     x = wlc(nn.LayerNorm(name="LayerNorm1", use_bias=self.use_bias)(targets))
     x = wlc(nn.SelfAttention(
-        num_heads=self.num_heads, use_bias=False, broadcast_dropout=False,
+        num_heads=self.num_heads, use_bias=self.use_bias, broadcast_dropout=False,
         dropout_rate=self.dropout_rate, decode=self.decode, name="SelfAttn")(
             x, decoder_mask, deterministic=deterministic))
     x = wlc(nn.Dropout(rate=self.dropout_rate)(x, deterministic=deterministic))
@@ -94,11 +94,10 @@ class EncoderDecoderBlock(nn.Module):
       # Encoder-Decoder block.
       y = wlc(nn.LayerNorm(name="LayerNorm2", use_bias=self.use_bias)(x))
       y = wlc(nn.MultiHeadDotProductAttention(
-          num_heads=self.num_heads, use_bias=False, broadcast_dropout=False,
+          num_heads=self.num_heads, use_bias=self.use_bias, broadcast_dropout=False,
           dropout_rate=self.dropout_rate, name="CrossAttn")(
               y, encoded, deterministic=deterministic))
-      y = wlc(
-          nn.Dropout(rate=self.dropout_rate)(y, deterministic=deterministic))
+      y = wlc(nn.Dropout(rate=self.dropout_rate)(y, deterministic=deterministic))
       y = wlc(y + x)
     else:
       y = x
