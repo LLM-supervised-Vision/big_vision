@@ -144,8 +144,8 @@ def get_config(arg=None):
   config.model.dtype_mm = config.dtype # 'bfloat16'
   config.model.temperature_init = 1.0/0.07
 
-  config.mesh = [("fsdp",-1)]
-  config.sharding_strategy = [('.*', f'fsdp(axis="fsdp", min_size_to_shard_mb=2)')]
+  # config.mesh = [("fsdp",-1)]
+  # config.sharding_strategy = [('.*', f'fsdp(axis="fsdp", min_size_to_shard_mb=2)')]
 
   config.optax_name = 'big_vision.scale_by_adafactor'
   config.optax = dict(beta2_cap=0.95)
