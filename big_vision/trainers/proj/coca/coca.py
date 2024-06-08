@@ -317,9 +317,9 @@ def main(argv):
 
       # # contrastive loss # 
       contrastive_logits = jnp.dot(zimg, ztxt.T) * extras["t"]
-      max_contrastive_logits = jnp.max(contrastive_logits)
-      average_contrastive_logits = jnp.mean(contrastive_logits)
-      min_contrastive_logits = jnp.min(contrastive_logits)
+      contrastive_logits_max = jnp.max(contrastive_logits)
+      contrastive_logits_average = jnp.mean(contrastive_logits)
+      contrastive_logits_min = jnp.min(contrastive_logits)
       l1 = -jnp.diag(jax.nn.log_softmax(contrastive_logits, axis=1))  # NLL img->txt
       l2 = -jnp.diag(jax.nn.log_softmax(contrastive_logits, axis=0))  # NLL txt->img
       co_loss = jnp.mean(0.5 * (l1 + l2))
@@ -338,7 +338,7 @@ def main(argv):
 
       return loss, {
         "training_loss": loss, "contrastive_loss": co_loss, "captioning_loss": ca_loss,
-        "max_contrastive_logits": max_contrastive_logits, "average_contrastive_logits": average_contrastive_logits, "min_contrastive_logits": min_contrastive_logits
+        "contrastive_logits_max": contrastive_logits_max, "contrastive_logits_average": contrastive_logits_average, "contrastive_logits_min": contrastive_logits_min
       }
 
     params, opt = train_state["params"], train_state["opt"]
