@@ -164,6 +164,7 @@ class MAPHead(nn.Module):
   mlp_dim: Optional[int] = None  # Defaults to 4x input dim
   num_heads: int = 12
   n_queries: int = 1
+  dtype_mm: str = "float32"
 
   @nn.compact
   def __call__(self, x):
@@ -175,11 +176,12 @@ class MAPHead(nn.Module):
 
     x = nn.MultiHeadDotProductAttention(
         num_heads=self.num_heads, normalize_qk=True,
+        dtype=self.dtype_mm,
         kernel_init=nn.initializers.xavier_uniform())(probe, x)
 
     # TODO: dropout on head?
     y = nn.LayerNorm()(x)
-    x = x + MlpBlock(mlp_dim=self.mlp_dim)(y)
+    x = x + MlpBlock(dtype_mm=self.dtype_mm,mlp_dim=self.mlp_dim)(y)
     if self.n_queries == 1:
       x = x[:, 0]
     return x
@@ -243,7 +245,7 @@ class _Model(nn.Module):
 
     if self.pool_type == "map":
       x = out["head_input"] = MAPHead(
-          num_heads=self.num_heads, mlp_dim=self.mlp_dim)(x)
+          num_heads=self.num_heads, mlp_dim=self.mlp_dim, dtype_mm=self.dtype_mm)(x)
     elif self.pool_type == "gap":
       x = out["head_input"] = jnp.mean(x, axis=1)
     elif self.pool_type == "0":
@@ -253,8 +255,8 @@ class _Model(nn.Module):
       encoded = encoded[:, 1:]
     elif self.pool_type[:4] == "map:" and self.pool_type[4:].isdigit():
       n_queries = int(self.pool_type[4:])
-      out['captioning_zimg'] = MAPHead(num_heads=self.num_heads, mlp_dim=self.mlp_dim, n_queries=n_queries)(x)
-      out['contrastive_zimg'] = MAPHead(num_heads=self.num_heads, mlp_dim=self.mlp_dim, n_queries=1)(x)
+      out['captioning_zimg'] = MAPHead(num_heads=self.num_heads, mlp_dim=self.mlp_dim, n_queries=n_queries, dtype_mm=self.dtype_mm)(x)
+      out['contrastive_zimg'] = MAPHead(num_heads=self.num_heads, mlp_dim=self.mlp_dim, n_queries=1, dtype_mm=self.dtype_mm)(x)
       x = out["head_input"] = out['contrastive_zimg'].squeeze()
     elif self.pool_type == "none":
       pass

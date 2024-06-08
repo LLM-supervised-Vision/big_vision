@@ -21,6 +21,7 @@ def get_config(arg=None):
                           warmup_ratio=0.15,
                           lr=1e-4,
                           dtype='float32',
+                          dec_lyr=12,
                           res=224,
                           eval_only=False,
                           debug=False,
@@ -67,7 +68,6 @@ def get_config(arg=None):
 
   config.contrastive_weight = 1.0
   config.captioning_weight = 1.0
-  config.wandb = not config.debug
   config.log_steps = 1000
 
   if config.get('contrastive_weight', 0.0) != 0.0:
@@ -130,7 +130,7 @@ def get_config(arg=None):
   config.model.posemb_type = 'learn'
 
   # Decoder
-  config.model.decoder_num_layers = 12
+  config.model.decoder_num_layers = config.dec_lyr
   # 0 values here mean to use the same value as for the encoder
   config.model.decoder_num_heads = 0
   config.model.decoder_mlp_dim = 0
@@ -160,6 +160,15 @@ def get_config(arg=None):
   config.schedule = schedule
 
   config.seed = 0
+
+  if config.debug:
+    config.wandb = not config.debug
+    # replace the data and pp with coco_captions for faster debugging
+    config.input.data = dict(name='coco_captions', split='train', data_dir='gs://us-central2-storage/tensorflow_datasets')
+    pp_coco = (f'decode|{pp_image}|'
+              'coco_captions("captions")|choice(inkey="captions", outkey="text")|'
+              f'{tokenizer("text", "labels")}|keep("image", "labels")')
+    config.input.pp = pp_coco
 
   if config.eval_only:
     config.total_steps = 0
