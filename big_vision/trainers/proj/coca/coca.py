@@ -338,7 +338,8 @@ def main(argv):
 
       return loss, {
         "training_loss": loss, "contrastive_loss": co_loss, "captioning_loss": ca_loss,
-        "contrastive_logits_max": contrastive_logits_max, "contrastive_logits_average": contrastive_logits_average, "contrastive_logits_min": contrastive_logits_min
+        "contrastive_logits_max": contrastive_logits_max, "contrastive_logits_average": contrastive_logits_average, "contrastive_logits_min": contrastive_logits_min,
+        "contrastive_temperature": extras["t"]
       }
 
     params, opt = train_state["params"], train_state["opt"]

@@ -160,9 +160,8 @@ def get_config(arg=None):
   config.schedule = schedule
 
   config.seed = 0
-
+  config.wandb = not config.debug
   if config.debug:
-    config.wandb = not config.debug
     # replace the data and pp with coco_captions for faster debugging
     config.input.data = dict(name='coco_captions', split='train', data_dir='gs://us-central2-storage/tensorflow_datasets')
     pp_coco = (f'decode|{pp_image}|'
