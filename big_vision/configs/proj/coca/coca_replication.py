@@ -20,6 +20,7 @@ def get_config(arg=None):
                           warmup_steps=10_000,
                           warmup_ratio=0.15,
                           lr=1e-4,
+                          wd=1e-4,
                           dtype='float32',
                           dec_lyr=12,
                           res=224,
@@ -159,7 +160,7 @@ def get_config(arg=None):
 
   # Standard schedule
   config.lr = config.lr # 5e-5
-  config.wd = 0.01
+  config.wd = config.wd # 0.01
   config.schedule = schedule
 
   config.seed = 0

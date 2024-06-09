@@ -22,6 +22,8 @@ from big_vision.models import vit
 import flax.linen as nn
 import flax.training.checkpoints
 import numpy as np
+import jax.numpy as jnp
+import logging
 
 ConfigDict = Any
 
@@ -50,6 +52,8 @@ class _Model(nn.Module):
   pool_type: str = "last"
   scan: bool = False
   remat_policy: str = "nothing_saveable"
+  dtype_mm: str = "float32"
+  autoregressive: bool = False
 
   @nn.compact
   def __call__(self, text, *, train=False):
@@ -60,7 +64,7 @@ class _Model(nn.Module):
     # EOS token has value 1, and that argmin returns the first index.
     # eos_indices = jnp.argmin(text, axis=1)
 
-    embedding = nn.Embed(num_embeddings=self.vocab_size, features=self.width)
+    embedding = nn.Embed(num_embeddings=self.vocab_size, features=self.width,dtype=self.dtype_mm)
     x = out["embedded"] = embedding(text)
 
     # Add posemb
@@ -69,8 +73,14 @@ class _Model(nn.Module):
                        nn.initializers.normal(stddev=1/np.sqrt(d)),
                        (1, l, d), x.dtype)
 
+    mask = nn.make_causal_mask(jnp.ones((n, l))) if self.autoregressive else None
+    if mask is not None:
+      logging.info(f"text_transformer: mask.shape = {mask.shape}")  
+    else:
+      logging.info(f"text_transformer: mask is None")
     x, encoder_out = vit.Encoder(
         depth=self.depth, mlp_dim=self.mlp_dim, num_heads=self.num_heads,
+        dtype_mm=self.dtype_mm, mask=mask,
         scan=self.scan, remat_policy=self.remat_policy, dropout=self.dropout)(
             x, deterministic=not train)
 
@@ -90,7 +100,7 @@ class _Model(nn.Module):
       x = out["pre_logits"] = x.max(axis=1)
     elif self.pool_type == "map":
       x = out["pre_logits"] = vit.MAPHead(
-          num_heads=self.num_heads, mlp_dim=self.mlp_dim)(x)
+          num_heads=self.num_heads, mlp_dim=self.mlp_dim, dtype_mm=self.dtype_mm)(x)
     else:
       raise NotImplementedError(f"Cannot do pooling '{self.pool_type}'")
 

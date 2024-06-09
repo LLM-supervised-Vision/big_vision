@@ -36,7 +36,7 @@ def get_config(arg=None):
   """The base configuration."""
   arg = bvcc.parse_arg(
     arg, res=224, runlocal=False, token_len=16, init='', img_head=False, 
-    batch_size=1024, scan=True, fsdp=4, dtype='float32', loss_fn="sigmoid",debug=True,
+    batch_size=1024, scan=True, fsdp=4, dtype='float32', loss_fn="sigmoid", autoregressive=False, debug=True,
   )
   config = ConfigDict()
 
@@ -100,7 +100,7 @@ def get_config(arg=None):
   config.model.image_model = 'vit'
   config.model.text_model = 'proj.image_text.text_transformer'
   config.model.image = dict(variant=VARIANT, pool_type='map',scan=arg.scan,dtype_mm=arg.dtype)
-  config.model.text = dict(variant=TXTVARIANT, vocab_size=VOCAB,scan=arg.scan)
+  config.model.text = dict(variant=TXTVARIANT, vocab_size=VOCAB,scan=arg.scan, dtype_mm=arg.dtype,autoregressive=arg.autoregressive) # autoregressive=False)
 
   config.model.out_dim = (None, EMBDIM)  # (image_out_dim, text_out_dim)
   config.loss_fn = arg.loss_fn # softmax, sigmoid
@@ -122,7 +122,7 @@ def get_config(arg=None):
     config.wd = 1e-4 if arg.batch_size!=32_768 else 3e-5
   elif config.loss_fn == "softmax":
     config.lr = 1e-3
-    config.wd = 0.2
+    config.wd = 1e-4 # 2e-1
 
   warmup_steps = max(int(0.03 * config.total_steps), 100)
   config.schedule = [

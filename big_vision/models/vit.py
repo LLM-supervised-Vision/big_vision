@@ -82,6 +82,7 @@ class Encoder1DBlock(nn.Module):
   num_heads: int = 12
   dropout: float = 0.0
   dtype_mm: str = "float32"
+  mask: Optional[jnp.ndarray] = None
 
   @nn.compact
   def __call__(self, x, deterministic=True):
@@ -94,7 +95,7 @@ class Encoder1DBlock(nn.Module):
         normalize_qk=True,
         deterministic=deterministic,
         dtype=self.dtype_mm,
-    )(y, y)
+    )(y, y, mask=self.mask)
     y = nn.with_logical_constraint(y, ("act_batch", "act_len", "act_emb"))
     y = nn.Dropout(rate=self.dropout)(y, deterministic)
     x = out["+sa"] = x + y
@@ -120,6 +121,7 @@ class Encoder(nn.Module):
   scan: bool = False
   remat_policy: str = "nothing_saveable"
   dtype_mm: str = "float32"
+  mask: Optional[jnp.ndarray] = None
 
   @nn.compact
   def __call__(self, x, deterministic=True):
@@ -140,6 +142,7 @@ class Encoder(nn.Module):
           length=self.depth)(
               name="encoderblock",
               dtype_mm=self.dtype_mm,
+              mask=self.mask,
               mlp_dim=self.mlp_dim,
               num_heads=self.num_heads,
               dropout=self.dropout)(x, deterministic)
@@ -150,7 +153,7 @@ class Encoder(nn.Module):
       for lyr in range(self.depth):
         block_cur = Encoder1DBlock(
             name=f"encoderblock_{lyr}",
-            dtype_mm=self.dtype_mm,
+            dtype_mm=self.dtype_mm, mask=self.mask,
             mlp_dim=self.mlp_dim, num_heads=self.num_heads,
             dropout=self.dropout)
         x, out[f"block{lyr:02d}"] = block_cur(x, deterministic)
