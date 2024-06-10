@@ -105,7 +105,7 @@ def get_config(arg=None):
     config.evals['imagenet/scoring'] = dict(
         type='proj.cappa.scoring_classifier',
         pred='score',
-        log_percent=1,
+        log_percent=0.05,
         data=dict(name='imagenet2012', split='validation'),
         pp_fn=f'decode|{pp_image}|keep("image", "label")',
         pp_txt=tokenizer('label', 'labels'),

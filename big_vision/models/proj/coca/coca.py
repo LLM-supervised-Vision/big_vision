@@ -204,6 +204,7 @@ class Decoder(nn.Module):
               do_masked_pred, jnp.ones_like(decoder_mask), decoder_mask
           )
         else:
+          logging.info(f"{logging_prefix} Decoder: performing shift right on y")
           y = shift_right(y)
 
       logging.info(f"{logging_prefix} Decoder: after shift right: y.shape: %s", y.shape)
@@ -425,7 +426,7 @@ class Model(nn.Module):
       new_cls_mask = new_cls_mask[:,None,None,:] # [B,1,1,L+1]
       new_cls_mask = jnp.pad(new_cls_mask, ((0,0),(0,0),(targets.shape[1],0),(0,0)), mode='constant', constant_values=0)
 
-      unimodal_decoder_mask = jnp.where(new_cls_mask + unimodal_decoder_mask == 2, unimodal_decoder_mask, new_cls_mask)
+      unimodal_decoder_mask = jnp.concatenate((unimodal_decoder_mask[:,:,:-1,:], new_cls_mask[:,:,-1:,:]), axis=-2)
       logging.info("decode: unimodal_decoder_mask.shape: %s", unimodal_decoder_mask.shape)
       logging.info("decode: unimodal_decoder_mask.shape: %s", unimodal_decoder_mask.shape)
       # Prepare the multimodal decoder mask
