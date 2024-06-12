@@ -17,6 +17,7 @@ def get_config(arg=None):
                           total_steps=366_500,
                           batch_size=8*1024,
                           warmup_steps=10_000,
+                          eval_only=False
                           )
 
   config.evals = {}
@@ -52,14 +53,14 @@ def get_config(arg=None):
       'pp_fn': pp_coco,
   }
 
-  # # Few-shot  metrics
-  # config.evals.fewshot = common_fewshot.get_fewshot_lsr(
-  #     target_resolution=res, resize_resolution=int(256 / 224 * res))
-  # config.evals.fewshot.type = 'fewshot_lsr'
-  # config.evals.fewshot.log_steps = 5_000 if not config.runlocal else 5
-  # config.evals.fewshot.representation_layer = 'pre_logits'
-  # config.evals.fewshot.pred = 'enc_rep'
-  # config.evals.fewshot.pp_eval = config.evals.fewshot.pp_train
+  # Few-shot  metrics
+  config.evals.fewshot = common_fewshot.get_fewshot_lsr(
+      target_resolution=res, resize_resolution=int(256 / 224 * res))
+  config.evals.fewshot.type = 'fewshot_lsr'
+  config.evals.fewshot.log_steps = 5_000 if not config.runlocal else 5
+  config.evals.fewshot.representation_layer = 'pre_logits'
+  config.evals.fewshot.pred = 'enc_rep'
+  config.evals.fewshot.pp_eval = config.evals.fewshot.pp_train
 
   # NOTE: Scoring of the entire imagenet validation set is rather slow:
   # ~100 secs / 1k classes / host.
@@ -116,8 +117,21 @@ def get_config(arg=None):
   config.lr = 0.001
   config.wd = 0.0001
   config.schedule = schedule
-  config.wandb = True
+  config.wandb = False
 
   config.seed = 0
+
+  if config.eval_only:
+    config.total_steps = 0
+    config.input = {}
+    config.input.batch_size = config.batch_size if not config.runlocal else 8
+    config.input.data = dict(name='coco_captions', split='train', data_dir='gs://us-central2-storage/tensorflow_datasets')
+    pp_coco = (f'decode|{pp_image}|'
+              'coco_captions("captions")|choice(inkey="captions", outkey="text")|'
+              f'{tokenizer("text", "labels")}|keep("image", "labels")')
+    config.input.pp = pp_coco
+    config.optax_name = 'identity'
+    config.optax = {}
+    config.lr = 0.0
 
   return config
