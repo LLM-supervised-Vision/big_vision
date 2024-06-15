@@ -324,7 +324,7 @@ class Model(nn.Module):
         (1, self.seq_len),
         self.decoder_emb_dim or self.emb_dim,
         "pos_embedding_decoder",
-        dtype_mm=self.dtype_mm,
+        dtype=self.dtype_mm,
     )
     self.decoder = Decoder(
         num_layers=self.decoder_num_layers or self.num_layers,
