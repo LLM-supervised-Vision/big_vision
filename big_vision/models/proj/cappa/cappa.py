@@ -76,6 +76,7 @@ class EncoderDecoderBlock(nn.Module):
   dropout_rate: float = 0.
   decode: bool = False
   use_bias: bool = True
+  dtype_mm: str = "float32"
 
   @nn.compact
   def __call__(self, targets, encoded, decoder_mask=None, deterministic=True):
