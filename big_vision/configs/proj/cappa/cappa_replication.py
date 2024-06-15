@@ -53,14 +53,14 @@ def get_config(arg=None):
       'pp_fn': pp_coco,
   }
 
-  # Few-shot  metrics
-  config.evals.fewshot = common_fewshot.get_fewshot_lsr(
-      target_resolution=res, resize_resolution=int(256 / 224 * res))
-  config.evals.fewshot.type = 'fewshot_lsr'
-  config.evals.fewshot.log_steps = 5_000 if not config.runlocal else 5
-  config.evals.fewshot.representation_layer = 'pre_logits'
-  config.evals.fewshot.pred = 'enc_rep'
-  config.evals.fewshot.pp_eval = config.evals.fewshot.pp_train
+  # # Few-shot  metrics
+  # config.evals.fewshot = common_fewshot.get_fewshot_lsr(
+  #     target_resolution=res, resize_resolution=int(256 / 224 * res))
+  # config.evals.fewshot.type = 'fewshot_lsr'
+  # config.evals.fewshot.log_steps = 5_000 if not config.runlocal else 5
+  # config.evals.fewshot.representation_layer = 'pre_logits'
+  # config.evals.fewshot.pred = 'enc_rep'
+  # config.evals.fewshot.pp_eval = config.evals.fewshot.pp_train
 
   # NOTE: Scoring of the entire imagenet validation set is rather slow:
   # ~100 secs / 1k classes / host.
@@ -109,8 +109,9 @@ def get_config(arg=None):
   config.grad_clip_norm = 1.0
   config.label_smoothing = 0.0
 
+  warmup_steps = max(int(0.02 * config.total_steps), 100)
   schedule = dict(decay_type='cosine',
-                  warmup_steps=config.warmup_steps
+                  warmup_steps=warmup_steps
                   if not config.runlocal else 5)
 
   # Standard schedule
