@@ -51,6 +51,7 @@ class MlpBlock(nn.Module):
   mlp_dim: int | None = None  # Defaults to 4x input dim
   dropout: float = 0.0
   use_bias: bool = True
+  dtype_mm: str = "float32"
 
   @nn.compact
   def __call__(self, x, deterministic=True):
@@ -61,10 +62,10 @@ class MlpBlock(nn.Module):
     )
 
     n, l, d = x.shape  # pylint: disable=unused-variable
-    x = nn.Dense(self.mlp_dim or 4 * d, use_bias=self.use_bias, **inits)(x)
+    x = nn.Dense(self.mlp_dim or 4 * d, dtype=self.dtype_mm, use_bias=self.use_bias, **inits)(x)
     x = nn.gelu(x)
     x = nn.Dropout(rate=self.dropout)(x, deterministic)
-    x = nn.Dense(d, use_bias=self.use_bias, **inits)(x)
+    x = nn.Dense(d, dtype=self.dtype_mm, use_bias=self.use_bias, **inits)(x)
     return x
 
 
@@ -96,7 +97,8 @@ class EncoderDecoderBlock(nn.Module):
     # Decoder block.
     x = wlc(nn.LayerNorm(name="LayerNorm1", use_bias=self.use_bias)(targets))
     x = wlc(nn.SelfAttention(
-        num_heads=self.num_heads, use_bias=False, broadcast_dropout=False,
+        num_heads=self.num_heads, use_bias=self.use_bias, broadcast_dropout=False,
+        normalize_qk=True, dtype=self.dtype_mm,
         dropout_rate=self.dropout_rate, decode=self.decode, name="SelfAttn")(
             x, decoder_mask, deterministic=deterministic))
     x = wlc(nn.Dropout(rate=self.dropout_rate)(x, deterministic=deterministic))
@@ -106,7 +108,8 @@ class EncoderDecoderBlock(nn.Module):
       # Encoder-Decoder block.
       y = wlc(nn.LayerNorm(name="LayerNorm2", use_bias=self.use_bias)(x))
       y = wlc(nn.MultiHeadDotProductAttention(
-          num_heads=self.num_heads, use_bias=False, broadcast_dropout=False,
+          num_heads=self.num_heads, use_bias=self.use_bias, broadcast_dropout=False,
+          normalize_qk=True, dtype=self.dtype_mm,
           dropout_rate=self.dropout_rate, name="CrossAttn")(
               y, encoded, deterministic=deterministic))
       y = wlc(
@@ -119,6 +122,7 @@ class EncoderDecoderBlock(nn.Module):
     z = wlc(nn.LayerNorm(name="LayerNorm3", use_bias=self.use_bias)(y))
     z = wlc(MlpBlock(
         mlp_dim=self.mlp_dim, dropout=self.dropout_rate, use_bias=self.use_bias,
+        dtype_mm=self.dtype_mm,
         name="MLP")(z, deterministic=deterministic))
 
     return wlc(y + z), None
@@ -142,6 +146,7 @@ class Decoder(nn.Module):
 
   scan: bool = False
   remat_policy: str = "nothing_saveable"
+  dtype_mm: str = "float32"
 
   @nn.compact
   def __call__(self,
@@ -204,6 +209,7 @@ class Decoder(nn.Module):
         self.emb_dim,
         name="EmbedTargets",
         embedding_init=nn.initializers.normal(stddev=1.0),
+        dtype=self.dtype_mm,
     )
     y = embed(y)
 
@@ -238,6 +244,7 @@ class Decoder(nn.Module):
                             length=self.num_layers)
       # 3. fprop
       y, _ = dec_scanned(num_heads=self.num_heads, mlp_dim=self.mlp_dim,
+                         dtype_mm=self.dtype_mm,
                          dropout_rate=self.dropout_rate, decode=decode,
                          use_bias=self.use_bias, name="EncDecBlock")(
                              y, encoded, decoder_mask, deterministic)
@@ -245,6 +252,7 @@ class Decoder(nn.Module):
       for lyr in range(self.num_layers):
         y, _ = EncoderDecoderBlock(
             num_heads=self.num_heads, mlp_dim=self.mlp_dim,
+            dtype_mm=self.dtype_mm,
             dropout_rate=self.dropout_rate, decode=decode,
             use_bias=self.use_bias, name=f"EncDecBlock{lyr}")(
                 y, encoded, decoder_mask=decoder_mask,
@@ -256,6 +264,7 @@ class Decoder(nn.Module):
         self.output_vocab_size,
         kernel_init=nn.initializers.zeros,
         name="LogitsDense",
+        dtype=self.dtype_mm,
     )(y)
     return logits
 
@@ -292,6 +301,7 @@ class Model(nn.Module):
 
   scan: bool = False
   remat_policy: str = "nothing_saveable"
+  dtype_mm: str = "float32"
 
   def setup(self):
 
@@ -305,6 +315,7 @@ class Model(nn.Module):
         posemb=self.posemb_type,
         scan=self.scan,
         remat_policy=self.remat_policy,
+        dtype_mm=self.dtype_mm,
     )
 
     self.pos_emb_for_decoder = vit.get_posemb(
@@ -313,6 +324,7 @@ class Model(nn.Module):
         (1, self.seq_len),
         self.decoder_emb_dim or self.emb_dim,
         "pos_embedding_decoder",
+        dtype_mm=self.dtype_mm,
     )
     self.decoder = Decoder(
         num_layers=self.decoder_num_layers or self.num_layers,
@@ -326,6 +338,7 @@ class Model(nn.Module):
         use_bias=self.decoder_bias,
         scan=self.scan,
         remat_policy=self.remat_policy,
+        dtype_mm=self.dtype_mm,
     )
 
   def encode(self, image, train=False, return_enc_features=False):

@@ -219,7 +219,7 @@ class Decoder(nn.Module):
       logging.info(f"{logging_prefix} Decoder: after embedding: y.shape: %s", y.shape)
 
       # concatenate cls-token to the end of the sequence
-      cls_emb = self.param("cls_emb", lambda key, shape, dtype: jnp.zeros(shape, dtype), (1, self.emb_dim), jnp.float32) # [1,E]
+      cls_emb = self.param("cls_emb", lambda key, shape, dtype: jnp.zeros(shape, dtype), (1, self.emb_dim), self.dtype_mm) # [1,E]
       cls_emb = jnp.tile(cls_emb, (y.shape[0], 1, 1)) # [B,1,E]
       y = jnp.concatenate([y, cls_emb], axis=1) # [B,L,E]
       logging.info(f"{logging_prefix}: after cls token concat: y.shape: %s", y.shape)
@@ -347,6 +347,7 @@ class Model(nn.Module):
         (1, self.seq_len+1),
         self.decoder_emb_dim or self.emb_dim,
         "pos_embedding_decoder",
+        dtype=self.dtype_mm,
     )
     self.unimodal_decoder = Decoder(
         num_layers=self.decoder_num_layers or self.num_layers,
@@ -379,7 +380,7 @@ class Model(nn.Module):
     )
 
     temp_init = jnp.log(self.temperature_init)
-    self.t = self.param("t", lambda key, shape, dtype: temp_init * jnp.ones(shape, dtype),(1,), jnp.float32)
+    self.t = self.param("t", lambda key, shape, dtype: temp_init * jnp.ones(shape, dtype),(1,), self.dtype_mm)
 
   def encode(self, image, train=False, return_enc_features=False):
     """Encodes input image or embeddings."""
