@@ -53,6 +53,7 @@ class _Model(nn.Module):
   scan: bool = False
   remat_policy: str = "nothing_saveable"
   dtype_mm: str = "float32"
+  normalize_qk: bool = False
   autoregressive: bool = False
 
   @nn.compact
@@ -80,7 +81,7 @@ class _Model(nn.Module):
       logging.info(f"text_transformer: mask is None")
     x, encoder_out = vit.Encoder(
         depth=self.depth, mlp_dim=self.mlp_dim, num_heads=self.num_heads,
-        dtype_mm=self.dtype_mm, mask=mask,
+        dtype_mm=self.dtype_mm, mask=mask, normalize_qk=self.normalize_qk,
         scan=self.scan, remat_policy=self.remat_policy, dropout=self.dropout)(
             x, deterministic=not train)
 

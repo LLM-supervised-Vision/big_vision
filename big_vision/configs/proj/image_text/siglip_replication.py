@@ -99,8 +99,8 @@ def get_config(arg=None):
   config.model = ConfigDict()
   config.model.image_model = 'vit'
   config.model.text_model = 'proj.image_text.text_transformer'
-  config.model.image = dict(variant=VARIANT, pool_type='map',scan=arg.scan,dtype_mm=arg.dtype)
-  config.model.text = dict(variant=TXTVARIANT, vocab_size=VOCAB,scan=arg.scan, dtype_mm=arg.dtype,autoregressive=arg.autoregressive) # autoregressive=False)
+  config.model.image = dict(variant=VARIANT, normalize_qk=False, pool_type='map',scan=arg.scan,dtype_mm=arg.dtype)
+  config.model.text = dict(variant=TXTVARIANT, vocab_size=VOCAB, normalize_qk=False, scan=arg.scan, dtype_mm=arg.dtype, autoregressive=arg.autoregressive) # autoregressive=False)
 
   config.model.out_dim = (None, EMBDIM)  # (image_out_dim, text_out_dim)
   config.loss_fn = arg.loss_fn # softmax, sigmoid

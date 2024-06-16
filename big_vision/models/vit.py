@@ -83,6 +83,7 @@ class Encoder1DBlock(nn.Module):
   dropout: float = 0.0
   dtype_mm: str = "float32"
   mask: Optional[jnp.ndarray] = None
+  normalize_qk: bool = False
 
   @nn.compact
   def __call__(self, x, deterministic=True):
@@ -92,7 +93,7 @@ class Encoder1DBlock(nn.Module):
     y = out["sa"] = nn.MultiHeadDotProductAttention(
         num_heads=self.num_heads,
         kernel_init=nn.initializers.xavier_uniform(),
-        normalize_qk=True,
+        normalize_qk=self.normalize_qk,
         deterministic=deterministic,
         dtype=self.dtype_mm,
     )(y, y, mask=self.mask)
@@ -122,6 +123,7 @@ class Encoder(nn.Module):
   remat_policy: str = "nothing_saveable"
   dtype_mm: str = "float32"
   mask: Optional[jnp.ndarray] = None
+  normalize_qk: bool = False
 
   @nn.compact
   def __call__(self, x, deterministic=True):
@@ -143,6 +145,7 @@ class Encoder(nn.Module):
               name="encoderblock",
               dtype_mm=self.dtype_mm,
               mask=self.mask,
+              normalize_qk=self.normalize_qk,
               mlp_dim=self.mlp_dim,
               num_heads=self.num_heads,
               dropout=self.dropout)(x, deterministic)
@@ -153,7 +156,7 @@ class Encoder(nn.Module):
       for lyr in range(self.depth):
         block_cur = Encoder1DBlock(
             name=f"encoderblock_{lyr}",
-            dtype_mm=self.dtype_mm, mask=self.mask,
+            dtype_mm=self.dtype_mm, mask=self.mask, normalize_qk=self.normalize_qk,
             mlp_dim=self.mlp_dim, num_heads=self.num_heads,
             dropout=self.dropout)
         x, out[f"block{lyr:02d}"] = block_cur(x, deterministic)
@@ -168,6 +171,7 @@ class MAPHead(nn.Module):
   num_heads: int = 12
   n_queries: int = 1
   dtype_mm: str = "float32"
+  normalize_qk: bool = False
 
   @nn.compact
   def __call__(self, x):
@@ -178,7 +182,7 @@ class MAPHead(nn.Module):
     probe = jnp.tile(probe, [n, 1, 1])
 
     x = nn.MultiHeadDotProductAttention(
-        num_heads=self.num_heads, normalize_qk=True,
+        num_heads=self.num_heads, normalize_qk=self.normalize_qk,
         dtype=self.dtype_mm,
         kernel_init=nn.initializers.xavier_uniform())(probe, x)
 
@@ -204,6 +208,8 @@ class _Model(nn.Module):
   dropout: float = 0.0
   pool_type: str = "gap"  # Can also be "map" or "tok"
   head_zeroinit: bool = True
+  mask: Optional[jnp.ndarray] = None
+  normalize_qk: bool = False
   scan: bool = False
   # or "dots_with_no_batch_dims_saveable" for more speed (memory costly)
   remat_policy: str = "nothing_saveable"
@@ -239,6 +245,8 @@ class _Model(nn.Module):
         mlp_dim=self.mlp_dim,
         num_heads=self.num_heads,
         dropout=self.dropout,
+        mask=self.mask,
+        normalize_qk=self.normalize_qk,
         scan=self.scan,
         remat_policy=self.remat_policy,
         dtype_mm=self.dtype_mm,
@@ -248,7 +256,7 @@ class _Model(nn.Module):
 
     if self.pool_type == "map":
       x = out["head_input"] = MAPHead(
-          num_heads=self.num_heads, mlp_dim=self.mlp_dim, dtype_mm=self.dtype_mm)(x)
+          num_heads=self.num_heads, mlp_dim=self.mlp_dim, normalize_qk=self.normalize_qk, dtype_mm=self.dtype_mm)(x)
     elif self.pool_type == "gap":
       x = out["head_input"] = jnp.mean(x, axis=1)
     elif self.pool_type == "0":
@@ -258,8 +266,8 @@ class _Model(nn.Module):
       encoded = encoded[:, 1:]
     elif self.pool_type[:4] == "map:" and self.pool_type[4:].isdigit():
       n_queries = int(self.pool_type[4:])
-      out['captioning_zimg'] = MAPHead(num_heads=self.num_heads, mlp_dim=self.mlp_dim, n_queries=n_queries, dtype_mm=self.dtype_mm)(x)
-      out['contrastive_zimg'] = MAPHead(num_heads=self.num_heads, mlp_dim=self.mlp_dim, n_queries=1, dtype_mm=self.dtype_mm)(x)
+      out['captioning_zimg'] = MAPHead(num_heads=self.num_heads, mlp_dim=self.mlp_dim, normalize_qk=self.normalize_qk, n_queries=n_queries, dtype_mm=self.dtype_mm)(x)
+      out['contrastive_zimg'] = MAPHead(num_heads=self.num_heads, mlp_dim=self.mlp_dim, normalize_qk=self.normalize_qk, n_queries=1, dtype_mm=self.dtype_mm)(x)
       x = out["head_input"] = out['contrastive_zimg'].squeeze()
     elif self.pool_type == "none":
       pass
