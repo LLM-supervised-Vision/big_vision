@@ -36,7 +36,7 @@ def get_config(arg=None):
   """The base configuration."""
   arg = bvcc.parse_arg(
     arg, res=224, runlocal=False, token_len=16, init='', img_head=False, 
-    batch_size=1024, total_samples=3, scan=True, fsdp=4, dtype='float32', loss_fn="sigmoid", autoregressive=False, debug=True,
+    batch_size=1024, total_samples=3.0, scan=True, fsdp=4, dtype='float32', loss_fn="sigmoid", autoregressive=False, debug=True,
   )
   config = ConfigDict()
 
@@ -48,15 +48,15 @@ def get_config(arg=None):
 
   # num_tpu_chips/samples_seen/batch_size->ETA,ETA(ckpting): 4/3B/512->17d8h; 4/3B/1024->14d12h,17d; 4/3B/2048->OOM; 4/3B/4096->OOM,18d6h; 4/3B/32_768->OOM
   step_dict = {
-    (512,3): 5_859_375, 
-    (1024,3): 2_929_688, 
-    (2048,3): 1_464_844, 
-    (4096,3): 732_422, 
-    (8_192,3): 366_211, 
-    (10_240,3): 292_969, 
-    (12_288,3): 244_141, 
-    (16_384,3): 183_105, 
-    (32_768,3): 91_553,
+    (512,3.0): 5_859_375, 
+    (1024,3.0): 2_929_688, 
+    (2048,3.0): 1_464_844, 
+    (4096,3.0): 732_422, 
+    (8_192,3.0): 366_211, 
+    (10_240,3.0): 292_969, 
+    (12_288,3.0): 244_141, 
+    (16_384,3.0): 183_105, 
+    (32_768,3.0): 91_553,
     (32_768,12.8): 390_625,
   }
   config.total_steps = step_dict[arg.batch_size,arg.total_samples] if not arg.runlocal else 1
