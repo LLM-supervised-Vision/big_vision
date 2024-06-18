@@ -127,8 +127,7 @@ def get_config(arg=None):
     config.wd = 2e-1
 
   warmup_steps = max(int(0.03 * config.total_steps), 100)
-  if config.loss_fn == "softmax":
-    warmup_steps = 2_000
+  # if config.loss_fn == "softmax": warmup_steps = 2_000
   config.schedule = [
       ('.*', dict(decay_type='cosine', warmup_steps=warmup_steps)),
   ]
