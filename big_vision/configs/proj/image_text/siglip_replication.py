@@ -16,7 +16,7 @@ Training receipe:
   - model
     - image
       - ViT-B/16
-      - TO_DETERMINE: head or no head?
+      - no head
       - randomly initialized
       - from scratch
 
@@ -36,7 +36,7 @@ def get_config(arg=None):
   """The base configuration."""
   arg = bvcc.parse_arg(
     arg, res=224, runlocal=False, token_len=16, init='', img_head=False, 
-    batch_size=1024, scan=True, fsdp=4, dtype='float32', loss_fn="sigmoid", autoregressive=False, debug=True,
+    batch_size=1024, total_samples=3, scan=True, fsdp=4, dtype='float32', loss_fn="sigmoid", autoregressive=False, debug=True,
   )
   config = ConfigDict()
 
@@ -48,17 +48,18 @@ def get_config(arg=None):
 
   # num_tpu_chips/samples_seen/batch_size->ETA,ETA(ckpting): 4/3B/512->17d8h; 4/3B/1024->14d12h,17d; 4/3B/2048->OOM; 4/3B/4096->OOM,18d6h; 4/3B/32_768->OOM
   step_dict = {
-    512: 5_859_375, 
-    1024: 2_929_688, 
-    2048: 1_464_844, 
-    4096: 732_422, 
-    8_192: 366_211, 
-    10_240: 292_969, 
-    12_288: 244_141, 
-    16_384: 183_105, 
-    32_768: 91_553
+    (512,3): 5_859_375, 
+    (1024,3): 2_929_688, 
+    (2048,3): 1_464_844, 
+    (4096,3): 732_422, 
+    (8_192,3): 366_211, 
+    (10_240,3): 292_969, 
+    (12_288,3): 244_141, 
+    (16_384,3): 183_105, 
+    (32_768,3): 91_553,
+    (32_768,12.8): 390_625,
   }
-  config.total_steps = step_dict[arg.batch_size] if not arg.runlocal else 1
+  config.total_steps = step_dict[arg.batch_size,arg.total_samples] if not arg.runlocal else 1
 
   config.init_shapes = [(1, arg.res, arg.res, 3), (1, arg.token_len,)] # TO_LEARN: where is it used?
   config.init_types = ['float32', 'int32'] # TO_LEARN: where is it used?
@@ -110,6 +111,7 @@ def get_config(arg=None):
   if VARIANT[0] == 'B':
     config.optax_name = 'scale_by_adam'
     config.optax = dict(b2=0.95,mu_dtype=arg.dtype)
+    if config.loss_fn == "softmax": config.optax = dict(b1=0.9, b2=0.98,mu_dtype=arg.dtype)
   else:
     config.optax_name = 'big_vision.scale_by_adafactor'
     config.optax = dict(beta2_cap=0.95)
@@ -121,10 +123,12 @@ def get_config(arg=None):
     config.lr = 1e-3 if arg.batch_size!=32_768 else 3e-4
     config.wd = 1e-4 if arg.batch_size!=32_768 else 3e-5
   elif config.loss_fn == "softmax":
-    config.lr = 1e-3
-    config.wd = 1e-4 # 2e-1
+    config.lr = 5e-4
+    config.wd = 2e-1
 
   warmup_steps = max(int(0.03 * config.total_steps), 100)
+  if config.loss_fn == "softmax":
+    warmup_steps = 2_000
   config.schedule = [
       ('.*', dict(decay_type='cosine', warmup_steps=warmup_steps)),
   ]
