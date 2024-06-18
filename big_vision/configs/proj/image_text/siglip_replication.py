@@ -123,8 +123,8 @@ def get_config(arg=None):
     config.lr = 1e-3 if arg.batch_size!=32_768 else 3e-4
     config.wd = 1e-4 if arg.batch_size!=32_768 else 3e-5
   elif config.loss_fn == "softmax":
-    config.lr = 5e-4
-    config.wd = 2e-1
+    config.lr = 1e-3 # 5e-4
+    config.wd = 1e-4 # 2e-1
 
   warmup_steps = max(int(0.03 * config.total_steps), 100)
   # if config.loss_fn == "softmax": warmup_steps = 2_000
