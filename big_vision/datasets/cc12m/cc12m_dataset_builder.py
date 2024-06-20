@@ -6,6 +6,7 @@ from etils import epath
 from typing import Dict, Tuple
 import tensorflow_datasets as tfds
 
+_NUM_SHARDS = 2
 _HOMEPAGE="https://github.com/google-research-datasets/conceptual-12m"
 _DESCRIPTION = """
 We introduce the Conceptual 12M (CC12M), a dataset with ~12 million image-text pairs 
@@ -29,7 +30,6 @@ class Builder(tfds.core.GeneratorBasedBuilder):
   def _info(self) -> tfds.core.DatasetInfo:
     """Returns the dataset metadata."""
     features = {
-      # These are the features of your dataset like images, labels ...
       'image': tfds.features.Image(doc='image'),
       "caption": tfds.features.Text(),
       "url": tfds.features.Text(doc='image URL'),
@@ -55,7 +55,7 @@ class Builder(tfds.core.GeneratorBasedBuilder):
       dl_manager: tfds.download.DownloadManager,
   ):
     beam = tfds.core.lazy_imports.apache_beam
-    num_shards = 2
+    num_shards = _NUM_SHARDS
     return (
         'Generate shard indices'
         >> beam.Create(list(range(num_shards)))
@@ -75,43 +75,19 @@ class Builder(tfds.core.GeneratorBasedBuilder):
       shard_idx: int,
   ):
     """Yields examples from a single shard."""
+    print(f"shard_idx = {shard_idx}")
     pd = tfds.core.lazy_imports.pandas
 
     img_archive_path = dl_manager.manual_dir / f'{shard_idx:05d}.tar'
     metadata_path = dl_manager.manual_dir / f'{shard_idx:05d}.parquet'
-    print(f"img_archive_path: {img_archive_path}")
-    print(f"metadata_path: {metadata_path}")
-
     metadata_df = pd.read_parquet(metadata_path)
-    # print(f"metadata_df: {metadata_df}")
-    count = 3
+
     for file_name, file_obj in dl_manager.iter_archive(img_archive_path):
       file_path = epath.Path(file_name)
       if file_path.suffix in ('.json', '.txt'):
         continue
-      # print(f"file_path: {file_path}")
-      # row_idx = int(file_path.stem) % 10000
-      # key = f'{shard_idx}_{row_idx}'
       key = (file_path.stem)
-      # print(f"key: {key}")
-      # key_idx = int(metadata_df['key'].iloc[row_idx])%10000
       key_idx = metadata_df[metadata_df['key'] == key].index[0]
-      # print(f"key_idx: {key_idx}")
-
-      # if count > 0:
-      #   print(f"key: {key}")
-      #   print(f"file_path: {file_path}")
-      #   row_df = metadata_df.iloc[row_idx]
-      #   print(f"row_df['caption']: {row_df['caption']}")
-      #   print(f"row_df['url']: {row_df['url']}")
-      #   print(f"row_df['key']: {row_df['key']}")
-      #   key_df = metadata_df.iloc[key_idx]
-      #   print(f"key_df['caption']: {key_df['caption']}")
-      #   print(f"key_df['url']: {key_df['url']}")
-      #   # save the image
-      #   with open(f"/home/austinwang/austin_big_vision/big_vision/datasets/cc12m/downloads/{file_path.name}", 'wb') as f:
-      #     f.write(file_obj.read())
-      #   count -= 1
 
       example = {
           'image': file_obj.read(),
