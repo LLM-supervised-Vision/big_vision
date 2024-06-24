@@ -126,6 +126,7 @@ def _get_next_item(iter_archive, suffix):
       if epath.Path(file_name).suffix == suffix: break
     file_path = epath.Path(file_name)
     temp = file_obj.read()
+    file_obj.seek(0)
     del temp
   except Exception as e:
     file_path, file_obj = None, None
