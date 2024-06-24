@@ -1,12 +1,14 @@
 """cc12m dataset."""
 
+import json
 import functools
 import numpy as np
 from etils import epath
 from typing import Dict, Tuple
 import tensorflow_datasets as tfds
 
-_NUM_SHARDS = 2
+_START_SHARD = 0
+_END_SHARD = 1244
 _HOMEPAGE="https://github.com/google-research-datasets/conceptual-12m"
 _DESCRIPTION = """
 We introduce the Conceptual 12M (CC12M), a dataset with ~12 million image-text pairs 
@@ -55,10 +57,10 @@ class Builder(tfds.core.GeneratorBasedBuilder):
       dl_manager: tfds.download.DownloadManager,
   ):
     beam = tfds.core.lazy_imports.apache_beam
-    num_shards = _NUM_SHARDS
+
     return (
         'Generate shard indices'
-        >> beam.Create(list(range(num_shards)))
+        >> beam.Create(list(range(_START_SHARD, _END_SHARD)))
         | 'Generate examples from a single shard'
         >> beam.FlatMap(
             functools.partial(
@@ -80,20 +82,54 @@ class Builder(tfds.core.GeneratorBasedBuilder):
 
     img_archive_path = dl_manager.manual_dir / f'{shard_idx:05d}.tar'
     metadata_path = dl_manager.manual_dir / f'{shard_idx:05d}.parquet'
-    metadata_df = pd.read_parquet(metadata_path)
 
-    for file_name, file_obj in dl_manager.iter_archive(img_archive_path):
-      file_path = epath.Path(file_name)
-      if file_path.suffix in ('.json', '.txt'):
-        continue
+    # read (or construct) metadata from parquet (or json) files
+    try:
+      metadata_df = pd.read_parquet(metadata_path)
+    except Exception as e:
+      print(f"Constructing metadata_df due to error reading {metadata_path}: {e}")
+      metadata_df = pd.DataFrame(columns=['key', 'caption', 'url', 'original_width', 'original_height'])
+
+      iter_archive = dl_manager.iter_archive(img_archive_path)
+      file_path, file_obj = _get_next_item(iter_archive, suffix='.json')
+      while file_path is not None:
+        file_obj.seek(0)
+        json_dict = json.loads(file_obj.read())
+        key, caption, url, original_width, original_height = json_dict['key'], json_dict['caption'], json_dict['url'], json_dict['original_width'], json_dict['original_height']
+        metadata_df = pd.concat([
+          metadata_df,
+          pd.DataFrame([[key, caption, url, original_width, original_height]], columns=['key', 'caption', 'url', 'original_width', 'original_height'])
+        ],ignore_index=True)
+        file_path, file_obj = _get_next_item(iter_archive, suffix='.json')
+      print(f"metadata_df.shape = {metadata_df.shape}")
+
+    # yield examples
+    iter_archive = dl_manager.iter_archive(img_archive_path)
+    file_path, file_obj = _get_next_item(iter_archive, suffix='.jpg')
+    while file_path is not None:
       key = (file_path.stem)
-      key_idx = metadata_df[metadata_df['key'] == key].index[0]
+      if key in metadata_df['key'].values:
+        key_idx = metadata_df[metadata_df['key'] == key].index[0]
 
-      example = {
-          'image': file_obj.read(),
-          **_get_example_metadata(metadata_df.iloc[key_idx]),
-      }
-      yield (key, example)
+        example = {
+            'image': file_obj.read(),
+            **_get_example_metadata(metadata_df.iloc[key_idx]),
+        }
+        yield (key, example)
+
+      file_path, file_obj = _get_next_item(iter_archive, suffix='.jpg')
+
+def _get_next_item(iter_archive, suffix):
+  try:
+    while True:
+      file_name, file_obj = next(iter_archive)
+      if epath.Path(file_name).suffix == suffix: break
+    file_path = epath.Path(file_name)
+    temp = file_obj.read()
+    del temp
+  except Exception as e:
+    file_path, file_obj = None, None
+  return file_path, file_obj
 
 def _get_example_metadata(metadata_df_row):
   """Returns example metadata."""
