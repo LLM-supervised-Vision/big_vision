@@ -7,8 +7,16 @@ from etils import epath
 from typing import Dict, Tuple
 import tensorflow_datasets as tfds
 
-_START_SHARD = 0
-_END_SHARD = 1244
+# _JOB=5
+
+# _NUM_JOBS=7
+# _TOTAL_SHARDS=1244
+# _START_SHARD = _TOTAL_SHARDS // _NUM_JOBS * _JOB
+# _END_SHARD = _TOTAL_SHARDS // _NUM_JOBS * (_JOB + 1) if _JOB < _NUM_JOBS - 1 else _TOTAL_SHARDS
+# print(f"JOB={_JOB}, START_SHARD={_START_SHARD}, END_SHARD={_END_SHARD}")
+_START_SHARD=0
+_END_SHARD=2
+_JOB=100
 _HOMEPAGE="https://github.com/google-research-datasets/conceptual-12m"
 _DESCRIPTION = """
 We introduce the Conceptual 12M (CC12M), a dataset with ~12 million image-text pairs 
@@ -21,9 +29,9 @@ Check our paper for further details.
 class Builder(tfds.core.GeneratorBasedBuilder):
   """DatasetBuilder for cc12m dataset."""
 
-  VERSION = tfds.core.Version('1.0.0')
+  VERSION = tfds.core.Version(f'1.0.{_JOB}')
   RELEASE_NOTES = {
-      '1.0.0': 'Initial release.',
+      f'1.0.{_JOB}': 'Initial release.',
   }
   MANUAL_DOWNLOAD_INSTRUCTIONS = f"""
   Refer to "Download" section on {_HOMEPAGE}
@@ -56,20 +64,23 @@ class Builder(tfds.core.GeneratorBasedBuilder):
       self,
       dl_manager: tfds.download.DownloadManager,
   ):
-    beam = tfds.core.lazy_imports.apache_beam
+    # beam = tfds.core.lazy_imports.apache_beam
 
-    return (
-        'Generate shard indices'
-        >> beam.Create(list(range(_START_SHARD, _END_SHARD)))
-        | 'Generate examples from a single shard'
-        >> beam.FlatMap(
-            functools.partial(
-                self._generate_examples_one_shard,
-                dl_manager,
-            )
-        )
-        | 'Prevent fusion of transforms' >> beam.Reshuffle()
-    )
+    # return (
+    #     'Generate shard indices'
+    #     >> beam.Create(list(range(_START_SHARD, _END_SHARD)))
+    #     | 'Generate examples from a single shard'
+    #     >> beam.FlatMap(
+    #         functools.partial(
+    #             self._generate_examples_one_shard,
+    #             dl_manager,
+    #         )
+    #     )
+    #     | 'Prevent fusion of transforms' >> beam.Reshuffle()
+    # )
+    for shard_idx in range(_START_SHARD, _END_SHARD):
+      for key, example in self._generate_examples_one_shard(dl_manager, shard_idx):
+        yield key, example
 
   def _generate_examples_one_shard(
       self,
