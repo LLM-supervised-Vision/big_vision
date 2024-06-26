@@ -109,7 +109,7 @@ def update_dataset_info_json(bucket, blobs_sorted):
     # logging.info(f"worker {FLAGS.worker_id}: shard_lengths_accumulated: {shard_lengths_accumulated}")
 
     # Update metadata in folder 1.0.0
-    first_folder_blob = bucket.get_blob(f"{FLAGS.prefix}dataset_info.json")
+    first_folder_blob = bucket.get_blob(f"{FLAGS.prefix}/dataset_info.json")
     if first_folder_blob and FLAGS.worker_id==0:
         dataset_info = json.loads(first_folder_blob.download_as_string())
         logging.info(f"dataset_info['splits'][0]['numBytes']: {dataset_info['splits'][0]['numBytes']}")
