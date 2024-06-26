@@ -11,16 +11,22 @@ function handle_ctrl_c {
 # Trap Ctrl+C signal
 trap handle_ctrl_c SIGINT
 
-# gsutil -m mv -r gs://us-central2-storage/tensorflow_datasets/laion400m/images/1.0.0/* gs://us-central2-storage/tensorflow_datasets/laion400m/images/1.0.0_source/
-# gsutil cp gs://us-central2-storage/tensorflow_datasets/laion400m/images/1.0.0_source/dataset_info.json gs://us-central2-storage/tensorflow_datasets/laion400m/images/1.0.0/
-# gsutil cp gs://us-central2-storage/tensorflow_datasets/laion400m/images/1.0.0_source/features.json gs://us-central2-storage/tensorflow_datasets/laion400m/images/1.0.0/
-# gsutil cp gs://us-central2-storage/tensorflow_datasets/laion400m/images/1.0.0_source/nsfw.labels.txt gs://us-central2-storage/tensorflow_datasets/laion400m/images/1.0.0/
-
 export TFDS_NAME=cc12m # laion400m/images
 export SPLIT=train
 export TFDS_DATA_DIR=gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets
 export FINAL_VERSION_ID=6
-export NUM_WORKERS=1
+export NUM_WORKERS=20
+
+# Check if the source directory exists in gcloud storage
+if [ $(gsutil ls $TFDS_DATA_DIR/$TFDS_NAME/1.0.0_source | wc -l) -eq 0 ]; then
+
+    echo "Creating $TFDS_DATA_DIR/$TFDS_NAME/1.0.0_source"
+    gsutil -m cp -r $TFDS_DATA_DIR/$TFDS_NAME/1.0.0/* $TFDS_DATA_DIR/$TFDS_NAME/1.0.0_source/
+    gsutil -m rm $TFDS_DATA_DIR/$TFDS_NAME/1.0.0/*tfrecord*
+
+    echo "Creating $TFDS_DATA_DIR/$TFDS_NAME/backup for backup"
+    gsutil -m cp -r $TFDS_DATA_DIR/$TFDS_NAME/* $TFDS_DATA_DIR/$TFDS_NAME/backup/
+fi
 
 cd ~/austin_big_vision/big_vision/tools/tfds_datasets
 for i in $(seq 0 $((NUM_WORKERS - 1))); do
@@ -31,9 +37,8 @@ for i in $(seq 0 $((NUM_WORKERS - 1))); do
         --tfds_data_dir $TFDS_DATA_DIR \
         --final_version_id $FINAL_VERSION_ID \
         --num_workers $NUM_WORKERS \
-        --worker_id $i \
-        --debug True &
+        --worker_id $i &
     sleep 1
 done
 
-wait
+# wait
