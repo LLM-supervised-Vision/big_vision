@@ -17,7 +17,7 @@ def get_config(arg=None):
                           total_steps=366_500,
                           batch_size=8*1024,
                           warmup_steps=10_000,
-                          # total_samples=9.0,
+                          total_samples=9.0,
                           eval_only=False
                           )
 
@@ -26,15 +26,15 @@ def get_config(arg=None):
   config.input.batch_size = config.batch_size if not config.runlocal else 8
   shuffle_buffer_size = 50_000 if not config.runlocal else 50
 
-  # # num_tpu_chips/samples_seen/batch_size->ETA,ETA(ckpting): 4/3B/512->17d8h; 4/3B/1024->14d12h,17d; 4/3B/2048->OOM; 4/3B/4096->OOM,18d6h; 4/3B/32_768->OOM
-  # def calculate_total_step(batch_size, total_samples_seen):
-  #   # the unit for total_samples_seen is billion (e.g. 1 billion example corresponds to 1.0)
-  #   total = total_samples_seen * 1e9
-  #   steps = total // batch_size
-  #   if total%batch_size: steps += 1
-  #   return steps
+  # num_tpu_chips/samples_seen/batch_size->ETA,ETA(ckpting): 4/3B/512->17d8h; 4/3B/1024->14d12h,17d; 4/3B/2048->OOM; 4/3B/4096->OOM,18d6h; 4/3B/32_768->OOM
+  def calculate_total_step(batch_size, total_samples_seen):
+    # the unit for total_samples_seen is billion (e.g. 1 billion example corresponds to 1.0)
+    total = total_samples_seen * 1e9
+    steps = total // batch_size
+    if total%batch_size: steps += 1
+    return steps
   
-  # config.total_steps = calculate_total_step(config.batch_size,config.total_samples) if not arg.runlocal else 1
+  config.total_steps = calculate_total_step(config.batch_size,config.total_samples) if not arg.runlocal else 1
 
   res = 224
   patch_size = 16
@@ -121,9 +121,9 @@ def get_config(arg=None):
   config.grad_clip_norm = 1.0
   config.label_smoothing = 0.0
 
-  # warmup_steps = max(int(0.02 * config.total_steps), 100)
+  warmup_steps = max(int(0.02 * config.total_steps), 100)
   schedule = dict(decay_type='cosine',
-                  warmup_steps=config.warmup_steps
+                  warmup_steps=warmup_steps
                   if not config.runlocal else 5)
 
   # Standard schedule
