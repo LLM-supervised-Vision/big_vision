@@ -47,19 +47,14 @@ def get_config(arg=None):
   # config.input.pack = True # TO_DETERMINE: pack or not pack? TODO: examine the variance of sequence length, compare num of data before and after packing
 
   # num_tpu_chips/samples_seen/batch_size->ETA,ETA(ckpting): 4/3B/512->17d8h; 4/3B/1024->14d12h,17d; 4/3B/2048->OOM; 4/3B/4096->OOM,18d6h; 4/3B/32_768->OOM
-  step_dict = {
-    (512,3.0): 5_859_375, 
-    (1024,3.0): 2_929_688, 
-    (2048,3.0): 1_464_844, 
-    (4096,3.0): 732_422, 
-    (8_192,3.0): 366_211, 
-    (10_240,3.0): 292_969, 
-    (12_288,3.0): 244_141, 
-    (16_384,3.0): 183_105, 
-    (32_768,3.0): 91_553,
-    (32_768,12.8): 390_625,
-  }
-  config.total_steps = step_dict[arg.batch_size,arg.total_samples] if not arg.runlocal else 1
+  def calculate_total_step(batch_size, total_samples_seen):
+    # the unit for total_samples_seen is billion (e.g. 1 billion example corresponds to 1.0)
+    total = total_samples_seen * 1e9
+    steps = total // batch_size
+    if total%batch_size: steps += 1
+    return steps
+  
+  config.total_steps = calculate_total_step(arg.batch_size,arg.total_samples) if not arg.runlocal else 1
 
   config.init_shapes = [(1, arg.res, arg.res, 3), (1, arg.token_len,)] # TO_LEARN: where is it used?
   config.init_types = ['float32', 'int32'] # TO_LEARN: where is it used?
