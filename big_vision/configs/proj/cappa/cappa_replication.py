@@ -32,7 +32,7 @@ def get_config(arg=None):
     total = total_samples_seen * 1e9
     steps = total // batch_size
     if total%batch_size: steps += 1
-    return steps
+    return int(steps)
   
   config.total_steps = calculate_total_step(config.batch_size,config.total_samples) if not config.runlocal else 1
 
@@ -130,7 +130,7 @@ def get_config(arg=None):
   config.lr = 0.001
   config.wd = 0.0001
   config.schedule = schedule
-  config.wandb = True
+  config.wandb = False
 
   config.seed = 0
 
