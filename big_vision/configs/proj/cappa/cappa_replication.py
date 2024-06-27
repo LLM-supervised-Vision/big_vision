@@ -121,9 +121,9 @@ def get_config(arg=None):
   config.grad_clip_norm = 1.0
   config.label_smoothing = 0.0
 
-  warmup_steps = max(int(0.02 * config.total_steps), 100)
+  # warmup_steps = max(int(0.02 * config.total_steps), 100)
   schedule = dict(decay_type='cosine',
-                  warmup_steps=warmup_steps
+                  warmup_steps=config.warmup_steps
                   if not config.runlocal else 5)
 
   # Standard schedule
