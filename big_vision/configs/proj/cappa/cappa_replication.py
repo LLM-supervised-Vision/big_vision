@@ -34,7 +34,7 @@ def get_config(arg=None):
     if total%batch_size: steps += 1
     return steps
   
-  config.total_steps = calculate_total_step(config.batch_size,config.total_samples) if not arg.runlocal else 1
+  config.total_steps = calculate_total_step(config.batch_size,config.total_samples) if not config.runlocal else 1
 
   res = 224
   patch_size = 16
