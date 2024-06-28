@@ -36,6 +36,7 @@ class Model(nn.Module):
   config: str
   num_classes: Optional[int] = None
   head_zeroinit: bool = True
+  dtype_mm: str = "float32"
 
   @nn.compact
   def __call__(self, text, *, train=False):
@@ -43,8 +44,8 @@ class Model(nn.Module):
 
     batch_size, max_len = text.shape
     bert_model = bert.BertEncoder(**dataclasses.asdict({
-        "base": configs.BertBaseConfig(),
-        "large": configs.BertLargeConfig(),
+        "base": configs.BertBaseConfig(dtype=jnp.dtype(self.dtype_mm)),
+        "large": configs.BertLargeConfig(dtype=jnp.dtype(self.dtype_mm)),
     }[self.config]))
     x = out["transformed"] = bert_model(
         token_ids=text,
