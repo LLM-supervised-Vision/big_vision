@@ -52,7 +52,7 @@ def get_config(arg=None):
     total = total_samples_seen * 1e9
     steps = total // batch_size
     if total%batch_size: steps += 1
-    return steps
+    return int(steps)
   
   config.total_steps = calculate_total_step(arg.batch_size,arg.total_samples) if not arg.runlocal else 1
 
@@ -106,7 +106,7 @@ def get_config(arg=None):
   if VARIANT[0] == 'B':
     config.optax_name = 'scale_by_adam'
     config.optax = dict(b2=0.95,mu_dtype=arg.dtype)
-    if config.loss_fn == "softmax": config.optax = dict(b1=0.9, b2=0.98,mu_dtype=arg.dtype)
+    # if config.loss_fn == "softmax": config.optax = dict(b1=0.9, b2=0.98,mu_dtype=arg.dtype)
   else:
     config.optax_name = 'big_vision.scale_by_adafactor'
     config.optax = dict(beta2_cap=0.95)
@@ -118,7 +118,7 @@ def get_config(arg=None):
     config.lr = 1e-3 if arg.batch_size!=32_768 else 3e-4
     config.wd = 1e-4 if arg.batch_size!=32_768 else 3e-5
   elif config.loss_fn == "softmax":
-    config.lr = 5e-4
+    config.lr = 1e-3 if arg.batch_size!=32_768 else 5e-4
     config.wd = 1e-4 # 2e-1
 
   warmup_steps = max(int(0.03 * config.total_steps), 100)
