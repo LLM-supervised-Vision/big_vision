@@ -77,6 +77,7 @@ class EncoderDecoderBlock(nn.Module):
   decode: bool = False
   use_bias: bool = True
   dtype_mm: str = "float32"
+  normalize_qk: bool = False # should be False but mistakenly set to True while training previous checkpoints
 
   @nn.compact
   def __call__(self, targets, encoded, decoder_mask=None, deterministic=True):
@@ -99,7 +100,7 @@ class EncoderDecoderBlock(nn.Module):
     x = wlc(nn.LayerNorm(name="LayerNorm1", use_bias=self.use_bias)(targets))
     x = wlc(nn.SelfAttention(
         num_heads=self.num_heads, use_bias=self.use_bias, broadcast_dropout=False,
-        normalize_qk=True, dtype=self.dtype_mm,
+        normalize_qk=self.normalize_qk, dtype=self.dtype_mm,
         dropout_rate=self.dropout_rate, decode=self.decode, name="SelfAttn")(
             x, decoder_mask, deterministic=deterministic))
     x = wlc(nn.Dropout(rate=self.dropout_rate)(x, deterministic=deterministic))
@@ -110,7 +111,7 @@ class EncoderDecoderBlock(nn.Module):
       y = wlc(nn.LayerNorm(name="LayerNorm2", use_bias=self.use_bias)(x))
       y = wlc(nn.MultiHeadDotProductAttention(
           num_heads=self.num_heads, use_bias=self.use_bias, broadcast_dropout=False,
-          normalize_qk=True, dtype=self.dtype_mm,
+          normalize_qk=self.normalize_qk, dtype=self.dtype_mm,
           dropout_rate=self.dropout_rate, name="CrossAttn")(
               y, encoded, deterministic=deterministic))
       y = wlc(
@@ -431,7 +432,7 @@ def load(init_params, init_files, model_params=None,
     ckpt_params = flax.core.freeze(init_params).unfreeze()
     vit_params = ckpt_params["encoder"]
     encoder_params = vit.load(
-        vit_params, enc_init, model_cfg={},
+        vit_params, enc_init, model_cfg=model_params,
         dont_load=dont_load)
     ckpt_params["encoder"] = encoder_params
 
