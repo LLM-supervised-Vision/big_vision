@@ -24,6 +24,7 @@ def get_config(arg=None):
                           dtype='float32',
                           dec_lyr=12,
                           res=224,
+                          scan=True,
                           eval_only=False,
                           debug=False,
                           )
@@ -141,7 +142,7 @@ def get_config(arg=None):
   config.model.masking_ratio = 1.0
   config.model.decoder_bias = True
 
-  config.model.scan = True
+  config.model.scan = config.scan
   config.model.dtype_mm = config.dtype # 'bfloat16'
   config.model.temperature_init = 1.0/0.07
 
