@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=40.8.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "austin_big_vision"
+version = "0.1.0"
+description = "big vision provides vision language pre-training"
+authors = [{ name = "Ziteng Wang", email = "zw2526@nyu.edu" }]
+requires-python = ">=3.7"
+
+dependencies = [
+    "numpy>=1.26",
+    "absl-py",
+    "distrax",
+    "editdistance",
+    "einops",
+    "flax",
+    "overrides",
+    "protobuf",
+    "sentencepiece",
+    "tensorflow-cpu",
+    "tfds-nightly",
+    "tensorflow-text",
+    "tensorflow-gan",
+    "pycocoevalcap",
+    "wandb",
+    "CommonLoopUtils @ git+https://github.com/google/CommonLoopUtils",
+    "flaxformer @ git+https://github.com/google/flaxformer",
+    "panopticapi @ git+https://github.com/akolesnikoff/panopticapi.git@mute"
+]
+
+[project.optional-dependencies]
+# Example of how to include optional dependencies
+gpu = [
+    "tensorflow-gpu"  # As an example
+]
+
+[tool.setuptools.packages.find]
+# Configure setuptools to automatically find packages
+where = "src"
+
+[tool.wheel]
+# Additional configurations for wheel, if necessary
+universal = true
