@@ -15,6 +15,8 @@ def get_config(arg=None):
   """Returns the base config."""
   config = bvcc.parse_arg(arg,
                           runlocal=False,
+                          contrastive_weight=1.0,
+                          captioning_weight=1.0,
                           total_steps=366_500,
                           batch_size=8*1024,
                           warmup_steps=10_000,
@@ -68,8 +70,8 @@ def get_config(arg=None):
              'coco_captions("captions")|choice(inkey="captions", outkey="text")|'
              f'{tokenizer("text", "labels")}|keep("image", "labels")')
 
-  config.contrastive_weight = 1.0
-  config.captioning_weight = 1.0
+  config.contrastive_weight = config.contrastive_weight
+  config.captioning_weight = config.captioning_weight
   config.log_steps = 1000
 
   if config.get('contrastive_weight', 0.0) != 0.0:
