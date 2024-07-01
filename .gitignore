@@ -2,3 +2,6 @@ __pycache__
 *.pyc
 wandb
 *.tsv
+
+# tfds dummy dataset for testing
+**/dummy_data/*
