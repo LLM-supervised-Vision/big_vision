@@ -11,7 +11,7 @@ import tarfile
 
 _HOMEPAGE = 'https://laion.ai/blog/laion-5b/'
 
-_NUM_SHARDS = 1 # for testing, use 1. for full dataset, use 232320.
+_NUM_SHARDS = 232320 # for testing, use 1. for full dataset, use 232320.
 _MISSING_SIMILARITY_VALUE = -1.0
 _NSFW_MISSING_TAG = 'UNTAGGED'
 _NSFW_TAGS = ('UNLIKELY', 'UNSURE', 'NSFW', _NSFW_MISSING_TAG)
