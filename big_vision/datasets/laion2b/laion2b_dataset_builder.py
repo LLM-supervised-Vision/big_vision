@@ -5,9 +5,13 @@ from etils import epath
 from tensorflow_datasets.core.utils.lazy_imports_utils import tensorflow as tf
 import tensorflow_datasets as tfds
 
+import multiprocessing
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import tarfile
+
 _HOMEPAGE = 'https://laion.ai/blog/laion-5b/'
 
-_NUM_SHARDS = 1
+_NUM_SHARDS = 1 # for testing, use 1. for full dataset, use 232320.
 _MISSING_SIMILARITY_VALUE = -1.0
 _NSFW_MISSING_TAG = 'UNTAGGED'
 _NSFW_TAGS = ('UNLIKELY', 'UNSURE', 'NSFW', _NSFW_MISSING_TAG)
@@ -88,21 +92,68 @@ class Builder(tfds.core.GeneratorBasedBuilder):
     metadata_path = dl_manager.manual_dir / f'{shard_idx:05d}.parquet'
 
     metadata_df = pd.read_parquet(metadata_path)
+    # keep rows with "success" status
+    metadata_df = metadata_df[metadata_df['status'] == 'success']
+    key_list = metadata_df['key']
 
-    for file_name, file_obj in dl_manager.iter_archive(img_archive_path):
-      file_path = epath.Path(file_name)
-      if file_path.suffix in ('.json', '.txt'):
-        continue
+    num_processes = multiprocessing.cpu_count() - 1
 
-      key_idx = int(file_path.stem)
+    input_queue = multiprocessing.Queue()
+    output_queue = multiprocessing.Queue()
 
-      key = f'{shard_idx}-{key_idx}'
-      example = {
-        'image': file_obj.read(),
-        **_get_example_metadata(metadata_df[metadata_df['key'] == f"{key_idx:09d}"].iloc[0]),
-      }
+    reader = multiprocessing.Process(
+        target=_read_images,
+        args=(img_archive_path, key_list, input_queue, num_processes),
+    )
+    reader.start()
 
-      yield (key, example)
+    processes = [
+        multiprocessing.Process(
+            target=_process_image,
+            args=(input_queue, output_queue, metadata_df, shard_idx),
+        )
+        for _ in range(num_processes)
+    ]
+
+    for process in processes:
+      process.start()
+
+    # collect results and yield them
+    processed_count = 0
+    while processed_count < len(key_list):
+      yield output_queue.get()
+      processed_count += 1
+    
+    # Ensure all processes have finished
+    reader.join()
+    for process in processes:
+      process.join()
+
+def _read_images(img_archive_path, key_list, input_queue, num_processes):
+  # Using ThreadPoolExecutor to read images in parallel
+  with tarfile.open(img_archive_path, 'r') as tar:
+    for key in key_list:
+      input_queue.put((key, tar.extractfile(f'{key}.jpg').read()))
+    
+  for _ in range(num_processes):
+    input_queue.put(None)
+
+def _process_image(input_queue, output_queue, metadata_df, shard_idx):
+  while True:
+    item = input_queue.get()
+    if item is None:
+      break
+
+    key, image = item
+    key_idx = int(key)
+    key_ = f'{shard_idx}-{key_idx}'
+    example = {
+      'image': image,
+      **_get_example_metadata(metadata_df[metadata_df['key'] == key].iloc[0]),
+    }
+
+    output_queue.put((key_, example))
+
 
 def _get_example_metadata(metadata_df_row):
   """Returns example metadata."""
@@ -111,7 +162,7 @@ def _get_example_metadata(metadata_df_row):
     nsfw_tag = _NSFW_MISSING_TAG
 
   return {
-      'caption': metadata_df_row['caption'],
+      'caption': metadata_df_row['caption'] or '',
       'nsfw': nsfw_tag,
       'similarity': metadata_df_row['similarity'] or _MISSING_SIMILARITY_VALUE,
       'license': metadata_df_row['LICENSE'] or '',
