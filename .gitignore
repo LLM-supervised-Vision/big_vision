@@ -5,4 +5,7 @@ wandb
 *.log
 
 # tfds dummy dataset for testing
-**/dummy_data/*
+**/dummy_data
+
+#alternative laion2b processing method
+**/laion2b_dataset_builder copy.py

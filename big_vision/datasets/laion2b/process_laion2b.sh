@@ -8,5 +8,11 @@
 #SBATCH --mem=180G
 #SBATCH --time=12:00:00
 
-# Add your commands here
-tfds build --overwrite --max_examples_per_split 20000000 --data_dir /scratch/zy2091/tensorflow_datasets/ --manual_dir /scratch/work/public/ml-datasets/laion2B-en-data/
+# check the pwd
+pwd
+
+singularity exec /scratch/zy2091/bv.simg bash -c "
+source ~/.bashrc;
+cd /scratch/zy2091/austin_big_vision/big_vision/datasets/laion2b;
+tfds build --overwrite --max_examples_per_split 10000000 --data_dir gs://us-central2-storage/tensorflow_datasets --manual_dir /scratch/work/public/ml-datasets/laion2B-en-data/ --max_shard_size_mb 32768
+"

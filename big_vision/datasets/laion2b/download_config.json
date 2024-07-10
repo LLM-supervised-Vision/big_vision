@@ -1,0 +1,4 @@
+{
+    "min_shard_size": 4294967296,
+    "max_shard_size": 34359738368
+}

@@ -8,7 +8,7 @@ class Laion2bTest(tfds.testing.DatasetBuilderTestCase):
   # TODO(laion2b):
   DATASET_CLASS = laion2b_dataset_builder.Builder
   SPLITS = {
-      'train': 9117,  # Number of fake train example
+      'train': 18276,  # Number of fake train example
   }
 
   # If you are calling `download/download_and_extract` with a dict, like:
