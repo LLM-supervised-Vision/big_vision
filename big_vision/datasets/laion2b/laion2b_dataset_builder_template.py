@@ -85,7 +85,16 @@ class Builder(tfds.core.GeneratorBasedBuilder):
       self,
       dl_manager: tfds.download.DownloadManager,
   ):
-    for shard_idx in range(_NUM_SHARDS):
+    # calculate the start and end indices for the shard
+    shards_per_task = 116
+    start_idx = (_TASK_ID - 1) * shards_per_task
+    if start_idx >= _NUM_SHARDS:
+      raise ValueError(f'Task {_TASK_ID} has no shards to process because it is out of range')
+    end_idx = _TASK_ID * shards_per_task
+    if end_idx > _NUM_SHARDS:
+      end_idx = _NUM_SHARDS
+    
+    for shard_idx in range(start_idx, end_idx):
       for key, example in self._generate_examples_one_shard(dl_manager, shard_idx):
         yield key, example
   

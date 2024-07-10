@@ -8,6 +8,8 @@
 #SBATCH --mem=90G
 #SBATCH --time=2:00:00
 
+# example usage: sbatch --array=1-10 process_laion2b_array.sh
+
 # check the pwd
 pwd
 
