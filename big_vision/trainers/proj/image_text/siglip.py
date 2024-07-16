@@ -71,6 +71,15 @@ jax.config.update("jax_threefry_partitionable", True)
 NamedSharding = jax.sharding.NamedSharding
 P = jax.sharding.PartitionSpec
 
+def _new_get_flops(fn, *args, **kwargs):
+  e = jax.jit(fn).lower(*args, **kwargs)
+  cost = e.compile().cost_analysis()[0]
+  if cost is None:
+    return 0
+  flops = int(cost['flops']) if 'flops' in cost else 0
+  return flops
+
+nn.summary._get_flops = _new_get_flops
 
 def main(argv):
   del argv
@@ -209,6 +218,13 @@ def main(argv):
     batch = jax.tree_map(lambda x: jnp.zeros(x.shape, x.dtype.as_numpy_dtype),
                          train_ds.element_spec)
     params = model.init(rng, batch["image"], batch["labels"])["params"]
+    # # bs=1 for dummy forward pass.
+    # # dummy_img = batch["image"][0:1]
+    # dummy_img = jnp.ones([1, 224, 224, 3])
+    # dummy_txt = batch["labels"][0:1]
+    # tab = model.tabulate(jax.random.key(0),dummy_img,dummy_txt,depth=1,compute_flops=True)
+    # print(tab)
+    # exit()
 
     # Set bias in the head to a low value, such that loss is small initially.
     if "init_head_bias" in config:
