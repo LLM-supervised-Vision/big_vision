@@ -53,6 +53,16 @@ jax.config.update("jax_transfer_guard", "disallow")
 jax.config.update("jax_threefry_partitionable", True)
 
 
+def _new_get_flops(fn, *args, **kwargs):
+  e = jax.jit(fn).lower(*args, **kwargs)
+  cost = e.compile().cost_analysis()[0]
+  if cost is None:
+    return 0
+  flops = int(cost['flops']) if 'flops' in cost else 0
+  return flops
+
+nn.summary._get_flops = _new_get_flops
+
 # def softmax_loss(zimg, ztxt, temperature):
 #   """Softmax loss following the CLIP paper. Factorized to reduce memory cost."""
 
@@ -211,6 +221,12 @@ def main(argv):
     txt_shape = (bs,) + tuple(train_ds.element_spec["labels"].shape[1:])
     dummy_img = jnp.zeros(img_shape, jnp.float32)
     dummy_txt = jnp.zeros(txt_shape, jnp.int64)
+    # # batch_size=1 for dummy inputs
+    # dummy_img = jnp.zeros((1,) + img_shape[1:], jnp.float32)
+    # dummy_txt = jnp.zeros((1,) + txt_shape[1:], jnp.int32)
+    # tab = model.tabulate(jax.random.key(0),dummy_img,dummy_txt,depth=2,compute_flops=True)
+    # write_note(tab)
+    # exit()
     variables = model.init(rng, dummy_img, dummy_txt)
     return flax.core.unfreeze(variables["params"])
 
