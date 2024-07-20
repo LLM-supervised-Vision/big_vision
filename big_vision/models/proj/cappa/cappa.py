@@ -149,6 +149,7 @@ class Decoder(nn.Module):
   scan: bool = False
   remat_policy: str = "nothing_saveable"
   dtype_mm: str = "float32"
+  normalize_qk: bool = False
 
   @nn.compact
   def __call__(self,
@@ -246,7 +247,7 @@ class Decoder(nn.Module):
                             length=self.num_layers)
       # 3. fprop
       y, _ = dec_scanned(num_heads=self.num_heads, mlp_dim=self.mlp_dim,
-                         dtype_mm=self.dtype_mm,
+                         dtype_mm=self.dtype_mm, normalize_qk=self.normalize_qk,
                          dropout_rate=self.dropout_rate, decode=decode,
                          use_bias=self.use_bias, name="EncDecBlock")(
                              y, encoded, decoder_mask, deterministic)
@@ -254,7 +255,7 @@ class Decoder(nn.Module):
       for lyr in range(self.num_layers):
         y, _ = EncoderDecoderBlock(
             num_heads=self.num_heads, mlp_dim=self.mlp_dim,
-            dtype_mm=self.dtype_mm,
+            dtype_mm=self.dtype_mm, normalize_qk=self.normalize_qk,
             dropout_rate=self.dropout_rate, decode=decode,
             use_bias=self.use_bias, name=f"EncDecBlock{lyr}")(
                 y, encoded, decoder_mask=decoder_mask,
@@ -304,6 +305,7 @@ class Model(nn.Module):
   scan: bool = False
   remat_policy: str = "nothing_saveable"
   dtype_mm: str = "float32"
+  normalize_qk: bool = False
 
   def setup(self):
 
@@ -318,6 +320,7 @@ class Model(nn.Module):
         scan=self.scan,
         remat_policy=self.remat_policy,
         dtype_mm=self.dtype_mm,
+        normalize_qk=self.normalize_qk,
     )
 
     self.pos_emb_for_decoder = vit.get_posemb(
@@ -341,6 +344,7 @@ class Model(nn.Module):
         scan=self.scan,
         remat_policy=self.remat_policy,
         dtype_mm=self.dtype_mm,
+        normalize_qk=self.normalize_qk,
     )
 
   def encode(self, image, train=False, return_enc_features=False):
