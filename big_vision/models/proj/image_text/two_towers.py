@@ -97,7 +97,7 @@ def load(init_params, init_files, model_cfg, img_load_kw={}, txt_load_kw={}):  #
 
   if isinstance(init_files, str):
     # A shortcut for a single file checkpoint of a two_towers model.
-    if "bias_init" in model_cfg.keys():
+    if model_cfg.get("bias_init", None) is not None:
       logging.info("loading img, txt, t, and b from a single checkpoint.")
       init_files = {k: f"{init_files}:{k}" for k in ("img", "txt", "t", "b")}
     else:

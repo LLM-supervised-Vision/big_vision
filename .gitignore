@@ -2,3 +2,4 @@ __pycache__
 *.pyc
 wandb
 *.tsv
+ckpt_npz
