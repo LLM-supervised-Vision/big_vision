@@ -100,6 +100,7 @@ def get_config(arg=None):
 
   config.model.out_dim = (None, EMBDIM)  # (image_out_dim, text_out_dim)
   config.loss_fn = arg.loss_fn # softmax, sigmoid
+  if config.loss_fn == "softmax": config.model.image['pool_type'] = 'gap'
   config.model.temperature_init = 10.0 if config.loss_fn == "sigmoid" else 1/0.07
   config.model.bias_init = -10.0 if config.loss_fn == "sigmoid" else None
 
