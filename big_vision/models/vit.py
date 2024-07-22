@@ -265,6 +265,8 @@ class _Model(nn.Module):
     elif self.pool_type == "tok":
       x = out["head_input"] = x[:, 0]
       encoded = encoded[:, 1:]
+    elif self.pool_type == "argmax":
+      x = out["head_input"] = jnp.argmax(x, axis=1)
     elif self.pool_type[:4] == "map:" and self.pool_type[4:].isdigit():
       n_queries = int(self.pool_type[4:])
       out['captioning_zimg'] = MAPHead(num_heads=self.num_heads, mlp_dim=self.mlp_dim, normalize_qk=self.normalize_qk, n_queries=n_queries, dtype_mm=self.dtype_mm)(x)
