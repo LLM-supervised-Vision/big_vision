@@ -214,6 +214,7 @@ class _Model(nn.Module):
   # or "dots_with_no_batch_dims_saveable" for more speed (memory costly)
   remat_policy: str = "nothing_saveable"
   dtype_mm: str = "float32"
+  proj_bias: bool = True
 
   @nn.compact
   def __call__(self, image, *, train=False):
@@ -289,7 +290,7 @@ class _Model(nn.Module):
 
     if self.num_classes:
       kw = {"kernel_init": nn.initializers.zeros} if self.head_zeroinit else {}
-      head = nn.Dense(self.num_classes, name="head", **kw)
+      head = nn.Dense(self.num_classes, name="head", use_bias=self.proj_bias, **kw)
       x_2d = out["logits_2d"] = head(x_2d)
       x = out["logits"] = head(x)
 

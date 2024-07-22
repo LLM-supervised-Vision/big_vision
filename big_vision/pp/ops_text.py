@@ -73,26 +73,13 @@ def create_tokenizer(model="c4_en", add_eos=True, add_bos=False):
   )
 
 
-def tokenize(input_text, tokenizer, max_len, *, pad_value, force_eos, coca=False,
+def tokenize(input_text, tokenizer, max_len, *, pad_value, force_eos,
              multi_text=False):
   """Tokenizes string, and adds `pad_value` if longer than `max_len`."""
 
   def pad(tokens):
     # Truncate/pad to max_len.
-    if coca:
-      tokens = tf.cond(
-          tf.shape(tokens)[0] >= max_len,
-          lambda: tf.concat(
-              # For too long, cut them off, but do keep the final EOS token.
-              [tokens[:max_len - 2], tokens[-1:], tokens[-1:]], axis=0),
-          lambda: tf.concat(
-            [
-              tf.pad(tokens, [(0, max_len - tf.shape(tokens)[0]-1)], constant_values=pad_value),
-              tokens[-1:]
-            ], axis=0
-          ),
-      )
-    elif force_eos:
+    if force_eos:
       tokens = tf.cond(
           tf.shape(tokens)[0] >= max_len,
           lambda: tf.concat(
@@ -162,14 +149,6 @@ def get_pp_tokenize(
      - "aa" -> [2, 2, 1]
      - "aaa" -> [2, 2, 1]
 
-  5. `eos="coca", pad_value=0`:
-      - "a" -> [2, 1, 1]
-      assume max_len=5:
-      - "a" -> [2, 1, 0, 0, 1]
-      - "aa" -> [2, 2, 1, 0, 1]
-      - "aaa" -> [2, 2, 2, 1, 1]
-      - "aaaa" -> [2, 2, 2, 1, 1]
-
      This is traditionally used with contrastive models that use the last token
      for embeddings, similarly to "cls" tokens in BERT-style models.
 
@@ -192,7 +171,7 @@ def get_pp_tokenize(
     an op that outputs tokenized text.
   """
 
-  if eos not in ("yes", "none", "sticky", "coca"):
+  if eos not in ("yes", "none", "sticky"):
     raise ValueError(f"Invalid value for eos: '{eos}'.")
 
   tokenizer = create_tokenizer(model, add_eos=eos != "none", add_bos=add_bos)
@@ -217,7 +196,6 @@ def get_pp_tokenize(
         tokenizer,
         max_len,
         pad_value=pad_value,
-        coca=eos == "coca",
         force_eos=eos == "sticky",
         multi_text=not sample_if_multi)
 

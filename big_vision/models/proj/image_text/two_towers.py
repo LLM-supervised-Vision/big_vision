@@ -33,6 +33,7 @@ class Model(nn.Module):
   image_model: str = "vit"
   out_dim: Union[int, Tuple[int, int]] = 128
   temperature_init: float = 1.0
+  max_temperature: bool = False
   bias_init: Optional[float] = None
 
   @nn.compact
@@ -77,7 +78,7 @@ class Model(nn.Module):
     t = self.param("t",
                    lambda key, shape, dtype: temp_init * jnp.ones(shape, dtype),
                    (1,), jnp.float32)
-    out["t"] = jnp.exp(t)
+    out["t"] = jnp.exp(t) if not self.max_temperature else jnp.minimum(jnp.exp(t), 100.0)
 
     out["t/parameter"] = t
     if (b_init := self.bias_init) is not None:
