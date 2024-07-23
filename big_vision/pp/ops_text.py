@@ -119,7 +119,8 @@ def get_pp_tokenize(
     lower=True,
     sample_if_multi=True,
     pad_value="<pad>",
-    add_bos=False
+    add_bos=False,
+    clip_bpe=False
 ):
   """Tokenizes a text.
 
