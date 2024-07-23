@@ -120,6 +120,7 @@ def get_config(arg=None):
         config.model.image.dtype_mm = 'bfloat16'
         config.model.max_temperature = False
 
+        config.total_steps = 183_105
         config.lr = 1e-3
         config.wd = 1e-4
         config.optax.b1 = 0.9
