@@ -4,7 +4,7 @@ from ml_collections import ConfigDict
 
 def get_config(arg=None):
     arg = bvcc.parse_arg(
-        arg, res=224, token_len=77, memory_efficient=False, debug=True
+        arg, res=224, token_len=77, unified=False, memory_efficient=False, debug=True
     )
     config = ConfigDict()
 
@@ -14,8 +14,9 @@ def get_config(arg=None):
     config.input.shuffle_buffer_size = 50_000
     config.input.data = dict(name='laion400m/images', split='train', data_dir='gs://us-central2-storage/tensorflow_datasets')
 
+    if arg.unified: arg.token_len = 64
     tokenizer = lambda inkey, outkey: (
-      f'tokenize(max_len={arg.token_len}, model="clip_bpe", clip_bpe=True, '
+      f'tokenize(max_len={arg.token_len}, model="c4_en", clip_bpe={not arg.unified}, '
       f'eos="sticky", pad_value=1, inkey="{inkey}", outkey="{outkey}")'
     )
     config.input.pp = (
@@ -41,17 +42,17 @@ def get_config(arg=None):
         normalize_qk = False,
         scan = False,
         remat_policy = 'nothing_saveable',
-        dtype_mm = 'bfloat16',
+        dtype_mm = 'float32',
         proj_bias = False,
     )
     config.model.text = dict(
         variant = 'M',
         dropout = 0.0,
-        vocab_size = 32_000,
+        vocab_size = 49_408,
         pool_type = 'argmax',
         scan = False,
         remat_policy = 'nothing_saveable',
-        dtype_mm = 'bfloat16',
+        dtype_mm = 'float32',
         normalize_qk = False,
         autoregressive = True,
         proj_bias = False,
@@ -59,7 +60,7 @@ def get_config(arg=None):
     )
     config.model.out_dim = (768, 768)
     config.model.temperature_init = 1/0.07
-    config.model.max_temperature = 100.0
+    config.model.max_temperature = True
     config.model.bias_init = None
 
     # Training section
@@ -96,10 +97,10 @@ def get_config(arg=None):
     if arg.memory_efficient:
         config.model.image.scan = True
         config.model.text.scan = True
-        # config.model.image.dtypemm = 'float32'
-        # config.model.text.dtypemm = 'float32'
+        config.model.image.dtype_mm = 'bfloat16'
+        config.model.text.dtype_mm = 'bfloat16'
         config.mesh = [("data",-1)]
-        config.sharding_strategy = [('.*', f'fsdp(axis="data", min_size_to_shard_mb={arg.fsdp})')]
+        config.sharding_strategy = [('.*', f'fsdp(axis="data", min_size_to_shard_mb=2)')]
 
     if arg.debug:
         config.input.data = dict(name='coco_captions', split='train', data_dir='gs://us-central2-storage/tensorflow_datasets')
@@ -107,5 +108,22 @@ def get_config(arg=None):
                 'coco_captions("captions")|choice(inkey="captions", outkey="text")|'
                 f'{tokenizer("text", "labels")}|keep("image", "labels")')
         config.wandb = False
+
+    if arg.unified:
+        config.input.batch_size = 16_384
+        config.input.shuffle_buffer_size = 250_000
+
+        config.model.text.variant = 'B'
+        config.model.text.vocab_size = 32_000
+        config.model.text.pool_type = 'last'
+        config.model.text.dtype_mm = 'bfloat16'
+        config.model.image.dtype_mm = 'bfloat16'
+        config.model.max_temperature = False
+
+        config.lr = 1e-3
+        config.wd = 1e-4
+        config.optax.b1 = 0.9
+        config.optax.b2 = 0.95
+        config.schedule = [('.*', dict(decay_type='cosine', warmup_steps=10_000))]
 
     return config
