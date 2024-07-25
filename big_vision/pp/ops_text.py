@@ -177,7 +177,7 @@ def get_pp_tokenize(
     bpe_path = '/home/austinwang/austin_big_vision/big_vision/pp/bpe_simple_vocab_16e6.txt.gz'
     simple_tokenizer = clip.simple_tokenizer.SimpleTokenizer(bpe_path)
 
-    def tokenize(text, tokenizer, max_token_len=77):
+    def _clip_tokenize(text, tokenizer, max_token_len=77):
       if tf.is_symbolic_tensor(text):
         raise NotImplementedError("Symbolic tensors are not supported.")
 
@@ -191,7 +191,7 @@ def get_pp_tokenize(
       output = tf.pad(tokens, [[0, max_token_len - tf.shape(tokens)[0]]])
       return output
 
-    return functools.partial(tokenize, tokenizer=simple_tokenizer, max_token_len=max_len)
+    return functools.partial(_clip_tokenize, tokenizer=simple_tokenizer, max_token_len=max_len)
 
   if eos not in ("yes", "none", "sticky"):
     raise ValueError(f"Invalid value for eos: '{eos}'.")
