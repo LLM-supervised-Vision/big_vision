@@ -125,6 +125,7 @@ def get_config(arg=None):
         config.wd = 1e-4
         config.optax.b1 = 0.9
         config.optax.b2 = 0.95
-        config.schedule = [('.*', dict(decay_type='cosine', warmup_steps=10_000))]
+        warmup_steps = max(int(0.03 * config.total_steps), 100)
+        config.schedule = [('.*', dict(decay_type='cosine', warmup_steps=warmup_steps))]
 
     return config
