@@ -116,6 +116,7 @@ def get_config(arg=None):
         config.model.text.variant = 'B'
         config.model.text.vocab_size = 32_000
         config.model.text.pool_type = 'last'
+        conifg.model.text.autoregressive = False
         config.model.text.dtype_mm = 'bfloat16'
         config.model.image.dtype_mm = 'bfloat16'
         config.model.max_temperature = False
