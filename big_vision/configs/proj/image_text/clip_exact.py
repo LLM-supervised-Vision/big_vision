@@ -152,7 +152,7 @@ def get_config(arg=None):
         })
         
         config.input.batch_size = 32_768
-        config.total_steps = 65_000
+        config.total_steps = 27,466 # 0.9*1e9/32768
         config.optax_name = 'lion'
         config.lr = 1e-4
         config.wd = 1e-7
