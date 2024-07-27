@@ -109,6 +109,8 @@ def get_config(arg=None):
         config.input.pp = (f'decode|resize({arg.res})|value_range(-1, 1)|'
                 'coco_captions("captions")|choice(inkey="captions", outkey="text")|'
                 f'{tokenizer("text", "labels")}|keep("image", "labels")')
+        config.model.image.variant = 'mu/16'
+        config.model.text.variant = 'mu'
         config.wandb = False
 
     if arg.unified or arg.loss_fn == 'sigmoid':
