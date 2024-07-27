@@ -111,7 +111,7 @@ def get_config(arg=None):
                 f'{tokenizer("text", "labels")}|keep("image", "labels")')
         config.wandb = False
 
-    if arg.unified:
+    if arg.unified or arg.loss_fn == 'sigmoid':
         config.input.batch_size = 16_384
         config.input.shuffle_buffer_size = 250_000
 
@@ -122,6 +122,12 @@ def get_config(arg=None):
         config.model.text.dtype_mm = 'bfloat16'
         config.model.image.dtype_mm = 'bfloat16'
         config.model.max_temperature = False
+        if arg.loss_fn == 'sigmoid':
+            config.model.out_dim = (768, None)
+            config.model.temperature_init = 10.0
+            config.model.max_temperature = False
+            config.model.bias_init = -10.0
+            config.model.image.pool_type = 'map'
 
         config.total_steps = 183_105
         config.lr = 1e-3
