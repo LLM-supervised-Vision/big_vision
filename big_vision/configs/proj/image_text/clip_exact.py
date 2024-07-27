@@ -4,7 +4,9 @@ from ml_collections import ConfigDict
 
 def get_config(arg=None):
     arg = bvcc.parse_arg(
-        arg, res=224, token_len=77, unified=False, memory_efficient=False, debug=True
+        arg, res=224, token_len=77, 
+        loss_fn='softmax', unified=False, 
+        lit=False, memory_efficient=False, debug=True
     )
     config = ConfigDict()
 
@@ -49,7 +51,7 @@ def get_config(arg=None):
         variant = 'M',
         dropout = 0.0,
         vocab_size = 49_408,
-        pool_type = 'argmax',
+        pool_type = 'max',
         scan = False,
         remat_policy = 'nothing_saveable',
         dtype_mm = 'float32',
@@ -68,7 +70,7 @@ def get_config(arg=None):
     config.init_types = ['float32', 'int32']
     config.init_shapes = [(1, arg.res, arg.res, 3), (1, arg.token_len,)]
 
-    config.loss_fn = 'softmax'
+    config.loss_fn = arg.loss_fn
     config.lr = 5e-4
     config.wd = 2e-1
     config.optax_name = 'scale_by_adam'
@@ -128,5 +130,32 @@ def get_config(arg=None):
         config.optax.b2 = 0.95
         warmup_steps = max(int(0.03 * config.total_steps), 100)
         config.schedule = [('.*', dict(decay_type='cosine', warmup_steps=warmup_steps))]
+
+    if arg.lit:
+        img_init = 'gs://us-central2-storage/tensorflow_datasets/siglip_replication_pod_04-11_2247/checkpoint.bv-000183105:img'
+        txt_name, txt_init = 'base', None
+        config.model_init = {'image': img_init, 'text': txt_init}
+        config.model_load['img_load_kw'] = {'dont_load': ['head/kernel', 'head/bias']}
+        
+        config.model.image.pool_type = 'map'
+        config.model.text_model = 'proj.flaxformer.bert'
+        config.model.text = ConfigDict({
+            'config': txt_name,
+            'head_zeroinit': False,
+            'dtype_mm': 'bfloat16',
+        })
+        
+        config.input.batch_size = 32_768
+        config.total_steps = 65_000
+        config.optax_name = 'lion'
+        config.lr = 1e-4
+        config.wd = 1e-7
+        warmup_steps = 6_500
+        config.schedule = [
+            ('img/.*', None), 
+            ('.*', dict(decay_type='cosine', warmup_steps=warmup_steps)),
+        ]
+
+        
 
     return config
