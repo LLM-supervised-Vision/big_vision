@@ -175,21 +175,35 @@ def get_pp_tokenize(
   if clip_bpe:
     import clip
     bpe_path = '/home/austinwang/austin_big_vision/big_vision/pp/bpe_simple_vocab_16e6.txt.gz'
-    simple_tokenizer = clip.simple_tokenizer.SimpleTokenizer(bpe_path)
+    # simple_tokenizer = clip.simple_tokenizer.SimpleTokenizer(bpe_path)
+    import big_vision
+    simple_tokenizer = big_vision.pp.tokenizer.SimpleTokenizer(bpe_path)
+
 
     def _clip_tokenize(text, tokenizer, max_token_len=77):
       if tf.is_symbolic_tensor(text):
-        raise NotImplementedError("Symbolic tensors are not supported.")
+        text = tf.strings.unicode_decode(text, "UTF-8")
+        max_length = 3000
+        # tf.print(f"tf.shape(text): {tf.shape(text)}") # Tensor("Shape_1:0", shape=(1,), dtype=int32))
+        padding = max_length - tf.shape(text)[0]
+        text = tf.concat([text, tf.zeros([padding], dtype=tf.int32)], axis=0)
+        return text
 
-      # tokenize text
+      import jax
       sot_token = tokenizer.encoder['<|startoftext|>']
       eot_token = tokenizer.encoder['<|endoftext|>']
-      out = tokenizer.encode(text.numpy().decode())
-      tokens = tf.concat([[sot_token], out, [eot_token]], axis=0)
+      text_numpy = jax.device_get(text)
+      texts = [''.join(chr(num) for num in row if num != 0) for row in text_numpy]
+      all_tokens = []
+      for text in texts:
+        tokens = [sot_token] + tokenizer.encode(text) + [eot_token]
+        all_tokens.append(tokens)
 
-      # pad to max_token_len
-      output = tf.pad(tokens, [[0, max_token_len - tf.shape(tokens)[0]]])
-      return output
+      padded_sequences = tf.keras.preprocessing.sequence.pad_sequences(
+          all_tokens, padding='post', maxlen=max_token_len, value=0
+      )
+      tensor_sequences = tf.constant(padded_sequences, dtype=tf.int32)
+      return tensor_sequences
 
     return functools.partial(_clip_tokenize, tokenizer=simple_tokenizer, max_token_len=max_len)
 
