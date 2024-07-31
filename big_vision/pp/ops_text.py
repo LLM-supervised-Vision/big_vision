@@ -95,6 +95,8 @@ def tokenize(input_text, tokenizer, max_len, *, pad_value, force_eos,
           tokens, [(0, max_len - tf.shape(tokens)[0])],
           constant_values=pad_value)
     tokens.set_shape([max_len])
+    print(f"tokens: {tokens}")
+    print(f"tokens.dtype: {tokens.dtype}")
     return tokens
 
   tokens = tokenizer.tokenize(input_text)
@@ -175,9 +177,9 @@ def get_pp_tokenize(
   if clip_bpe:
     import clip
     bpe_path = '/home/austinwang/austin_big_vision/big_vision/pp/bpe_simple_vocab_16e6.txt.gz'
-    # simple_tokenizer = clip.simple_tokenizer.SimpleTokenizer(bpe_path)
-    import big_vision
-    simple_tokenizer = big_vision.pp.tokenizer.SimpleTokenizer(bpe_path)
+    simple_tokenizer = clip.simple_tokenizer.SimpleTokenizer(bpe_path)
+    # import big_vision
+    # simple_tokenizer = big_vision.pp.tokenizer.SimpleTokenizer(bpe_path)
 
 
     def _clip_tokenize(text, tokenizer, max_token_len=77):
@@ -202,8 +204,7 @@ def get_pp_tokenize(
       padded_sequences = tf.keras.preprocessing.sequence.pad_sequences(
           all_tokens, padding='post', maxlen=max_token_len, value=0
       )
-      tensor_sequences = tf.constant(padded_sequences, dtype=tf.int32)
-      return tensor_sequences
+      return padded_sequences
 
     return functools.partial(_clip_tokenize, tokenizer=simple_tokenizer, max_token_len=max_len)
 

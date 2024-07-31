@@ -188,7 +188,8 @@ def main(argv):
        jax.local_device_count(), jax.device_count(),
        batch_size // jax.device_count())
 
-  train_ds, ntrain_img = input_pipeline.training(config.input)
+  # train_ds, ntrain_img = input_pipeline.training(config.input)
+  train_ds, post_preprocess_fn, ntrain_img = input_pipeline.training(config.input)
 
   total_steps = u.steps("total", config, ntrain_img, batch_size)
   def get_steps(name, default=ValueError, cfg=config):
@@ -215,9 +216,15 @@ def main(argv):
   model = model_mod.Model(**config.get("model", {}))
 
   def init(rng):
-    batch = jax.tree_map(lambda x: jnp.zeros(x.shape, x.dtype.as_numpy_dtype),
-                         train_ds.element_spec)
-    params = model.init(rng, batch["image"], batch["labels"])["params"]
+    img_init_shape, txt_init_shape = config.get("init_shapes", ([1, 224, 224, 3], [1, 77]))
+    img_init_dtype, txt_init_dtype = config.get("init_dtypes", (jnp.float32, jnp.int32))
+    dummy_img = jnp.ones(img_init_shape, img_init_dtype)
+    dummy_txt = jnp.ones(txt_init_shape, txt_init_dtype)
+    params = model.init(rng, dummy_img, dummy_txt)["params"]
+
+    # batch = jax.tree_map(lambda x: jnp.zeros(x.shape, x.dtype.as_numpy_dtype),
+                        #  train_ds.element_spec)
+    # params = model.init(rng, batch["image"], batch["labels"])["params"]
     # # bs=1 for dummy forward pass.
     # # dummy_img = batch["image"][0:1]
     # dummy_img = jnp.ones([1, 224, 224, 3])
@@ -354,11 +361,11 @@ def main(argv):
     params = optax.apply_updates(params, updates)
 
     measurements = {"training_loss": loss}
-    gs = jax.tree_leaves(bv_optax.replace_frozen(config.schedule, grads, 0.))
+    gs = jax.tree.leaves(bv_optax.replace_frozen(config.schedule, grads, 0.))
     measurements["l2_grads"] = jnp.sqrt(sum([jnp.sum(g * g) for g in gs]))
-    ps = jax.tree_leaves(params)
+    ps = jax.tree.leaves(params)
     measurements["l2_params"] = jnp.sqrt(sum([jnp.sum(p * p) for p in ps]))
-    us = jax.tree_leaves(updates)
+    us = jax.tree.leaves(updates)
     measurements["l2_updates"] = jnp.sqrt(sum([jnp.sum(u * u) for u in us]))
     step_count = bv_optax.get_count(opt, jittable=True)
     lr_schedule = sched_fns[0](u.put_cpu(step_count))
@@ -495,6 +502,7 @@ def main(argv):
     with jax.profiler.StepTraceAnnotation("train_step", step_num=step):
       with u.chrono.log_timing("z/secs/update0", noop=step > first_step + 1):
         with mesh, nn.logical_axis_rules(sharding_rules):
+          batch = post_preprocess_fn(batch)          
           train_state, measurements = update_fn(train_state, rng_loop, batch)
           if config.get("wandb", False) and jax.process_index() == 0: wandb.log(measurements)
 

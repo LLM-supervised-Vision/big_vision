@@ -8,6 +8,8 @@ def get_config(arg=None):
         loss_fn='softmax', unified=False, 
         lit=False, memory_efficient=False, debug=True
     )
+    # common variables
+    # TODO: Add more common variables here
     config = ConfigDict()
 
     # Input section
@@ -25,6 +27,7 @@ def get_config(arg=None):
         f'decode|resize({arg.res})|flip_lr|value_range(-1,1)|'
         f'{tokenizer("caption", "labels")}|keep("image", "labels")'
     )
+    if not arg.unified: config.input.pp_late = (f'{tokenizer("labels", "labels")}')
 
     # Model section
     config.model_name = 'proj.image_text.two_towers'
@@ -109,6 +112,8 @@ def get_config(arg=None):
         config.input.pp = (f'decode|resize({arg.res})|value_range(-1, 1)|'
                 'coco_captions("captions")|choice(inkey="captions", outkey="text")|'
                 f'{tokenizer("text", "labels")}|keep("image", "labels")')
+
+        config.input.batch_size = 16
         config.model.image.variant = 'mu/16'
         config.model.text.variant = 'mu'
         config.wandb = False

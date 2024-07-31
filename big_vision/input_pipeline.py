@@ -105,7 +105,9 @@ def training(input_config):
         prefetch=input_config.get("prefetch", 2),  # Default 2 for bwd compat.
         **config_to_kw(input_config)
     )
-    return train_ds, train_data.total_examples
+    post_preprocess_fn = pp_builder.get_preprocess_fn(input_config.get("pp_late",""),log_data=False)
+    return train_ds, post_preprocess_fn, train_data.total_examples
+    # return train_ds, train_data.total_examples
 
   # A helpful error instead of silent ignore:
   for k in per_pipeline_configs:
