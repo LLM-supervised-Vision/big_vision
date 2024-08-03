@@ -188,8 +188,8 @@ def main(argv):
        jax.local_device_count(), jax.device_count(),
        batch_size // jax.device_count())
 
-  # train_ds, ntrain_img = input_pipeline.training(config.input)
-  train_ds, post_preprocess_fn, ntrain_img = input_pipeline.training(config.input)
+  train_ds, ntrain_img = input_pipeline.training(config.input)
+  # train_ds, post_preprocess_fn, ntrain_img = input_pipeline.training(config.input)
 
   total_steps = u.steps("total", config, ntrain_img, batch_size)
   def get_steps(name, default=ValueError, cfg=config):
@@ -216,15 +216,16 @@ def main(argv):
   model = model_mod.Model(**config.get("model", {}))
 
   def init(rng):
-    img_init_shape, txt_init_shape = config.get("init_shapes", ([1, 224, 224, 3], [1, 77]))
-    img_init_dtype, txt_init_dtype = config.get("init_dtypes", (jnp.float32, jnp.int32))
-    dummy_img = jnp.ones(img_init_shape, img_init_dtype)
-    dummy_txt = jnp.ones(txt_init_shape, txt_init_dtype)
-    params = model.init(rng, dummy_img, dummy_txt)["params"]
+    # img_init_shape, txt_init_shape = config.get("init_shapes", ([1, 224, 224, 3], [1, 77]))
+    # img_init_dtype, txt_init_dtype = config.get("init_dtypes", (jnp.float32, jnp.int32))
+    # dummy_img = jnp.ones(img_init_shape, img_init_dtype)
+    # dummy_txt = jnp.ones(txt_init_shape, txt_init_dtype)
+    # params = model.init(rng, dummy_img, dummy_txt)["params"]
 
-    # batch = jax.tree_map(lambda x: jnp.zeros(x.shape, x.dtype.as_numpy_dtype),
-                        #  train_ds.element_spec)
-    # params = model.init(rng, batch["image"], batch["labels"])["params"]
+    batch = jax.tree.map(lambda x: jnp.zeros(x.shape, x.dtype.as_numpy_dtype),
+                         train_ds.element_spec)
+    params = model.init(rng, batch["image"], batch["labels"])["params"]
+
     # # bs=1 for dummy forward pass.
     # # dummy_img = batch["image"][0:1]
     # dummy_img = jnp.ones([1, 224, 224, 3])
@@ -258,7 +259,7 @@ def main(argv):
   sched_fns_cpu = [u.jit_cpu()(sched_fn) for sched_fn in sched_fns]
 
   if jax.process_index() == 0:
-    num_params = sum(np.prod(p.shape) for p in jax.tree_leaves(params_shape))
+    num_params = sum(np.prod(p.shape) for p in jax.tree.leaves(params_shape))
     mw.measure("num_params", num_params)
 
 ################################################################################

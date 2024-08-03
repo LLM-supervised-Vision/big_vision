@@ -95,8 +95,6 @@ def tokenize(input_text, tokenizer, max_len, *, pad_value, force_eos,
           tokens, [(0, max_len - tf.shape(tokens)[0])],
           constant_values=pad_value)
     tokens.set_shape([max_len])
-    print(f"tokens: {tokens}")
-    print(f"tokens.dtype: {tokens.dtype}")
     return tokens
 
   tokens = tokenizer.tokenize(input_text)

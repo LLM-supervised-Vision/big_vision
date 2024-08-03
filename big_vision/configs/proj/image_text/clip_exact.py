@@ -16,7 +16,7 @@ def get_config(arg=None):
     config.input = ConfigDict()
     config.input.batch_size = 32_768
     config.input.shuffle_buffer_size = 50_000
-    config.input.data = dict(name='laion400m/images', split='train', data_dir='gs://us-central2-storage/tensorflow_datasets')
+    config.input.data = dict(name='laion400m/images', split='train', data_dir='gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets')
 
     if arg.unified: arg.token_len = 64
     tokenizer = lambda inkey, outkey: (
@@ -27,7 +27,7 @@ def get_config(arg=None):
         f'decode|resize({arg.res})|flip_lr|value_range(-1,1)|'
         f'{tokenizer("caption", "labels")}|keep("image", "labels")'
     )
-    if not arg.unified: config.input.pp_late = (f'{tokenizer("labels", "labels")}')
+    config.input.pp_late = (f'{tokenizer("labels", "labels")}')
 
     # Model section
     config.model_name = 'proj.image_text.two_towers'
@@ -120,6 +120,7 @@ def get_config(arg=None):
 
     if arg.unified or arg.loss_fn == 'sigmoid':
         config.input.batch_size = 16_384
+        config.input.pp_late = ('')
         config.input.shuffle_buffer_size = 250_000
 
         config.model.text.variant = 'B'
@@ -130,7 +131,7 @@ def get_config(arg=None):
         config.model.image.dtype_mm = 'bfloat16'
         config.model.max_temperature = False
         if arg.loss_fn == 'sigmoid':
-            config.model.out_dim = (768, None)
+            config.model.out_dim = (None, 768)
             config.model.temperature_init = 10.0
             config.model.max_temperature = False
             config.model.bias_init = -10.0
@@ -145,25 +146,63 @@ def get_config(arg=None):
         config.schedule = [('.*', dict(decay_type='cosine', warmup_steps=warmup_steps))]
 
     if arg.lit:
-        img_init = 'gs://us-central2-storage/tensorflow_datasets/siglip_replication_pod_04-11_2247/checkpoint.bv-000183105:img'
-        txt_name, txt_init = 'base', None
-        config.model_init = {'image': img_init, 'text': txt_init}
-        config.model_load['img_load_kw'] = {'dont_load': ['head/kernel', 'head/bias']}
+        backbone = 'clip'
+        backbone_dict = {
+            'clip': 'gs://us-central2-storage/tensorflow_datasets/vit-b-16_3b_pretraining/clip_bs16384_warm10k_lr1e-3_wd1e-4_bf16_qknorm-F_b2-0.95_12lyr_07-23_1510/checkpoint.bv-000183105:img',
+            'clip_map': 'gs://us-central2-storage/tensorflow_datasets/vit-b-16_3b_pretraining/clip_autoregressive_bs16384_warm0.03_lr1e-3_wd1e-4_bf16_qknorm-F_b2-0.95_12lyr_06-24_2019',
+            'siglip': 'gs://us-central2-storage/tensorflow_datasets/vit-b-16_3b_pretraining/siglip_parallel_bs16384_warm0.03_lr1e-3_wd1e-4_bf16_qknorm-F_b2-0.95_12lyr_06-24_2019',
+            'siglip_v4-32': 'gs://us-central2-storage/tensorflow_datasets/vit-b-16_3b_pretraining/siglip_replication_pod_04-11_2247',
+            'cappa': 'gs://us-central2-storage/tensorflow_datasets/vit-b-16_3b_pretraining/cappa_bs16384_s3B_warm0.03_lr1e-3_wd1e-4_bf16_qknorm-F_b2-0.95_6lyr_06-27_2108',
+            'cappa_9k': 'gs://us-central2-storage/tensorflow_datasets/cappa_bs16384_s9B_warm0.02_lr1e-3_wd1e-4_bf16_qknorm-F_b2-0.95_6lyr_06-27_2108/checkpoint.bv-000549317:encoder'
+            # 'cappa_decoder-qknorm-T_warm0.02': 'gs://us-central2-storage/tensorflow_datasets/cappa_bs16384_warm0.02_lr1e-3_wd1e-4_bf16_b2-0.95_6lyr_06-15_2102',
+        }
+        img_init = backbone_dict[backbone]
+        config.model_init = {'image': img_init, 'text': None}
+
+        dont_load = [
+            'head/kernel', 'head/bias',
+            'MAPHead_0/LayerNorm_0/bias',
+            'MAPHead_0/LayerNorm_0/scale',
+            'MAPHead_0/MlpBlock_0/Dense_0/bias',
+            'MAPHead_0/MlpBlock_0/Dense_0/kernel',
+            'MAPHead_0/MlpBlock_0/Dense_1/bias',
+            'MAPHead_0/MlpBlock_0/Dense_1/kernel',
+            'MAPHead_0/MultiHeadDotProductAttention_0/key/bias',
+            'MAPHead_0/MultiHeadDotProductAttention_0/key/kernel',
+            'MAPHead_0/MultiHeadDotProductAttention_0/out/bias',
+            'MAPHead_0/MultiHeadDotProductAttention_0/out/kernel',
+            'MAPHead_0/MultiHeadDotProductAttention_0/query/bias',
+            'MAPHead_0/MultiHeadDotProductAttention_0/query/kernel',
+            'MAPHead_0/MultiHeadDotProductAttention_0/value/bias',
+            'MAPHead_0/MultiHeadDotProductAttention_0/value/kernel',
+            'MAPHead_0/probe',
+        ]
+        config.model_load['img_load_kw'] = {'dont_load': dont_load}
         
         config.model.image.pool_type = 'map'
-        config.model.text_model = 'proj.flaxformer.bert'
-        config.model.text = ConfigDict({
-            'config': txt_name,
-            'head_zeroinit': False,
-            'dtype_mm': 'bfloat16',
-        })
-        
-        config.input.batch_size = 32_768
-        config.total_steps = 27,466 # 0.9*1e9/32768
-        config.optax_name = 'lion'
-        config.lr = 1e-4
-        config.wd = 1e-7
-        warmup_steps = 6_500
+        config.model.image.dtype_mm = 'bfloat16'
+        config.model.text = dict(
+            variant = 'B',
+            dropout = 0.0,
+            vocab_size = 32_000,
+            pool_type = 'gap',
+            scan = False,
+            remat_policy = 'nothing_saveable',
+            dtype_mm = 'bfloat16',
+            normalize_qk = False,
+            autoregressive = False,
+            proj_bias = False,
+            head_zeroinit = False,
+        )
+        config.model.out_dim = (None, 768)
+
+        config.input.batch_size = 16_384
+        config.total_steps = 54_931 # 0.9*1e9/16_384
+        config.optax_name = 'big_vision.scale_by_adafactor'
+        config.optax = dict(beta2_cap=0.999)
+        config.lr = 1e-3
+        config.wd = 0.0
+        warmup_steps = 10_000
         config.schedule = [
             ('img/.*', None), 
             ('.*', dict(decay_type='cosine', warmup_steps=warmup_steps)),
