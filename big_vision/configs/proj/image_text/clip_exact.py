@@ -161,21 +161,7 @@ def get_config(arg=None):
 
         dont_load = [
             'head/kernel', 'head/bias',
-            'MAPHead_0/LayerNorm_0/bias',
-            'MAPHead_0/LayerNorm_0/scale',
-            'MAPHead_0/MlpBlock_0/Dense_0/bias',
-            'MAPHead_0/MlpBlock_0/Dense_0/kernel',
-            'MAPHead_0/MlpBlock_0/Dense_1/bias',
-            'MAPHead_0/MlpBlock_0/Dense_1/kernel',
-            'MAPHead_0/MultiHeadDotProductAttention_0/key/bias',
-            'MAPHead_0/MultiHeadDotProductAttention_0/key/kernel',
-            'MAPHead_0/MultiHeadDotProductAttention_0/out/bias',
-            'MAPHead_0/MultiHeadDotProductAttention_0/out/kernel',
-            'MAPHead_0/MultiHeadDotProductAttention_0/query/bias',
-            'MAPHead_0/MultiHeadDotProductAttention_0/query/kernel',
-            'MAPHead_0/MultiHeadDotProductAttention_0/value/bias',
-            'MAPHead_0/MultiHeadDotProductAttention_0/value/kernel',
-            'MAPHead_0/probe',
+            'MAPHead_0/.*',
         ]
         config.model_load['img_load_kw'] = {'dont_load': dont_load}
         
