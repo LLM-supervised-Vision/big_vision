@@ -503,7 +503,8 @@ def main(argv):
     with jax.profiler.StepTraceAnnotation("train_step", step_num=step):
       with u.chrono.log_timing("z/secs/update0", noop=step > first_step + 1):
         with mesh, nn.logical_axis_rules(sharding_rules):
-          batch = post_preprocess_fn(batch)          
+          # batch = post_preprocess_fn(batch)    
+          # with jax.transfer_guard("allow"): train_state, measurements = update_fn(train_state, rng_loop, batch)
           train_state, measurements = update_fn(train_state, rng_loop, batch)
           if config.get("wandb", False) and jax.process_index() == 0: wandb.log(measurements)
 
