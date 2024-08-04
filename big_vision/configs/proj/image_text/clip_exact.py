@@ -182,13 +182,13 @@ def get_config(arg=None):
         )
         config.model.out_dim = (None, 768)
 
-        config.input.batch_size = 16_384
-        config.total_steps = 54_931 # 0.9*1e9/16_384
-        config.optax_name = 'big_vision.scale_by_adafactor'
-        config.optax = dict(beta2_cap=0.999)
-        config.lr = 1e-3
-        config.wd = 0.0
-        warmup_steps = 10_000
+        config.input.batch_size = 32_768
+        config.total_steps = 27465 # 0.9*1e9/32_768
+        config.optax_name = 'scale_by_lion'
+        # config.optax = dict(b1=0.9,b2=0.99,mu_dtype='bfloat16')
+        config.lr = 1e-4
+        config.wd = 1e-7
+        warmup_steps = 6_500
         config.schedule = [
             ('img/.*', None), 
             ('.*', dict(decay_type='cosine', warmup_steps=warmup_steps)),
