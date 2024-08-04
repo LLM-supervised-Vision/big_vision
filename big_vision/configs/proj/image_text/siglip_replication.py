@@ -41,7 +41,7 @@ def get_config(arg=None):
   config = ConfigDict()
 
   config.input = {}
-  config.input.data = dict(name='laion400m/images', split='train', data_dir='gs://us-central2-storage/tensorflow_datasets')
+  config.input.data = dict(name='laion400m/images', split='train', data_dir='gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets')
   config.input.batch_size = arg.batch_size if not arg.runlocal else 32
   config.input.shuffle_buffer_size = 250_000  if not arg.runlocal else 50
   # config.input.pack = True # TO_DETERMINE: pack or not pack? TODO: examine the variance of sequence length, compare num of data before and after packing
