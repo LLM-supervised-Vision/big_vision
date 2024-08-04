@@ -146,13 +146,13 @@ def get_config(arg=None):
         config.schedule = [('.*', dict(decay_type='cosine', warmup_steps=warmup_steps))]
 
     if arg.lit:
-        backbone = 'clip'
+        backbone = 'cappa'
         backbone_dict = {
             'clip': 'gs://us-central2-storage/tensorflow_datasets/vit-b-16_3b_pretraining/clip_bs16384_warm10k_lr1e-3_wd1e-4_bf16_qknorm-F_b2-0.95_12lyr_07-23_1510/checkpoint.bv-000183105:img',
             'clip_map': 'gs://us-central2-storage/tensorflow_datasets/vit-b-16_3b_pretraining/clip_autoregressive_bs16384_warm0.03_lr1e-3_wd1e-4_bf16_qknorm-F_b2-0.95_12lyr_06-24_2019',
             'siglip': 'gs://us-central2-storage/tensorflow_datasets/vit-b-16_3b_pretraining/siglip_parallel_bs16384_warm0.03_lr1e-3_wd1e-4_bf16_qknorm-F_b2-0.95_12lyr_06-24_2019',
             'siglip_v4-32': 'gs://us-central2-storage/tensorflow_datasets/vit-b-16_3b_pretraining/siglip_replication_pod_04-11_2247',
-            'cappa': 'gs://us-central2-storage/tensorflow_datasets/vit-b-16_3b_pretraining/cappa_bs16384_s3B_warm0.03_lr1e-3_wd1e-4_bf16_qknorm-F_b2-0.95_6lyr_06-27_2108',
+            'cappa': 'gs://us-central2-storage/tensorflow_datasets/vit-b-16_3b_pretraining/cappa_bs16384_s3B_warm0.03_lr1e-3_wd1e-4_bf16_qknorm-F_b2-0.95_6lyr_06-27_2108/checkpoint.bv-000183106:encoder',
             'cappa_9k': 'gs://us-central2-storage/tensorflow_datasets/cappa_bs16384_s9B_warm0.02_lr1e-3_wd1e-4_bf16_qknorm-F_b2-0.95_6lyr_06-27_2108/checkpoint.bv-000549317:encoder'
             # 'cappa_decoder-qknorm-T_warm0.02': 'gs://us-central2-storage/tensorflow_datasets/cappa_bs16384_warm0.02_lr1e-3_wd1e-4_bf16_b2-0.95_6lyr_06-15_2102',
         }

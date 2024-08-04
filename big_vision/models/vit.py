@@ -441,7 +441,7 @@ def load(init_params, init_file, model_cfg, dont_load=()):  # pylint: disable=in
     restored_params = pyloop_to_scan(restored_params)
   if (not model_cfg.get("scan")
       and "encoderblock" in restored_params["Transformer"]):
-    restored_params = scan_to_pyloop(restored_params)
+    restored_params = utils.jit_cpu()(scan_to_pyloop)(restored_params)
 
   # possibly use the random init for some of the params (such as, the head).
   restored_params = common.merge_params(restored_params, init_params, dont_load)
