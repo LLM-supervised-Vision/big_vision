@@ -146,7 +146,7 @@ def get_config(arg=None):
         config.schedule = [('.*', dict(decay_type='cosine', warmup_steps=warmup_steps))]
 
     if arg.lit:
-        backbone = 'cappa'
+        backbone = 'clip'
         backbone_dict = {
             'clip': 'gs://us-central2-storage/tensorflow_datasets/vit-b-16_3b_pretraining/clip_bs16384_warm10k_lr1e-3_wd1e-4_bf16_qknorm-F_b2-0.95_12lyr_07-23_1510/checkpoint.bv-000183105:img',
             'clip_map': 'gs://us-central2-storage/tensorflow_datasets/vit-b-16_3b_pretraining/clip_autoregressive_bs16384_warm0.03_lr1e-3_wd1e-4_bf16_qknorm-F_b2-0.95_12lyr_06-24_2019',
