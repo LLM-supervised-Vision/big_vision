@@ -98,15 +98,6 @@ def get_config(arg=None):
       log_steps=1000,
     )
 
-    # Memory efficient
-    if arg.memory_efficient:
-        config.model.image.scan = True
-        config.model.text.scan = True
-        config.model.image.dtype_mm = 'bfloat16'
-        config.model.text.dtype_mm = 'bfloat16'
-        config.mesh = [("data",-1)]
-        config.sharding_strategy = [('.*', f'fsdp(axis="data", min_size_to_shard_mb=2)')]
-
     if arg.unified or arg.loss_fn == 'sigmoid':
         config.input.batch_size = 16_384
         config.input.pp_late = ('')
@@ -182,6 +173,17 @@ def get_config(arg=None):
             ('img/.*', None), 
             ('.*', dict(decay_type='cosine', warmup_steps=warmup_steps)),
         ]
+
+    # Memory efficient
+    if arg.memory_efficient:
+        config.input.batch_size = 128
+        # config.init_types[0] = 'bfloat16'
+        config.model.image.scan = True
+        config.model.text.scan = True
+        config.model.image.dtype_mm = 'float32'
+        config.model.text.dtype_mm = 'float32'
+        config.mesh = [("data",-1)]
+        config.sharding_strategy = [('.*', f'fsdp(axis="data", min_size_to_shard_mb=2)')]
 
     if arg.debug:
         config.input.data = dict(name='coco_captions', split='train', data_dir='gs://us-central2-storage/tensorflow_datasets')

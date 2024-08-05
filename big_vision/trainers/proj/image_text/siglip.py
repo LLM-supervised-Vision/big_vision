@@ -216,14 +216,15 @@ def main(argv):
   model = model_mod.Model(**config.get("model", {}))
 
   def init(rng):
-    # img_init_shape, txt_init_shape = config.get("init_shapes", ([1, 224, 224, 3], [1, 77]))
-    # img_init_dtype, txt_init_dtype = config.get("init_dtypes", (jnp.float32, jnp.int32))
-    # dummy_img = jnp.ones(img_init_shape, img_init_dtype)
-    # dummy_txt = jnp.ones(txt_init_shape, txt_init_dtype)
+    img_init_shape, txt_init_shape = config.get("init_shapes", ([1, 224, 224, 3], [1, 77]))
+    img_init_dtype, txt_init_dtype = config.get("init_dtypes", (jnp.float32, jnp.int32))
+    dummy_img = jnp.ones(img_init_shape, img_init_dtype)
+    dummy_txt = jnp.ones(txt_init_shape, txt_init_dtype)
+    batch = {"image": dummy_img, "labels": dummy_txt}
     # params = model.init(rng, dummy_img, dummy_txt)["params"]
 
-    batch = jax.tree.map(lambda x: jnp.zeros(x.shape, x.dtype.as_numpy_dtype),
-                         train_ds.element_spec)
+    # batch = jax.tree.map(lambda x: jnp.zeros(x.shape, x.dtype.as_numpy_dtype),
+    #                      train_ds.element_spec)
     # params = model.init(rng, batch["image"], batch["labels"])["params"]
     out = model.init(rng, batch["image"], batch["labels"])
     params = out["params"]
@@ -444,12 +445,12 @@ def main(argv):
   # maximal flexibility. Later `jit` will prune out things that are not needed.
   def eval_logits_fn(train_state, batch):
     zimg, ztxt, out = model.apply(
-        {"params": train_state["params"]},
+        {"params": train_state["params"], "state": train_state["state"]},
         batch.get("image", None), batch.get("labels", None))
     return zimg, ztxt, out
 
   def eval_loss_fn(train_state, batch):
-    logits, _ = model.apply({"params": train_state["params"]}, batch["image"])
+    logits, _ = model.apply({"params": train_state["params"],"state": train_state["state"]}, batch["image"])
     loss_fn = getattr(u, config.get("loss", "sigmoid_xent"))
     return {
         "loss": loss_fn(logits=logits, labels=batch["labels"], reduction=False)

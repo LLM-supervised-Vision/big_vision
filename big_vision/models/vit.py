@@ -107,7 +107,7 @@ class Encoder1DBlock(nn.Module):
     y = nn.LayerNorm()(x)
     if self.kan:
       y = out["kan"] = KAN(
-        layer_dims=[y.shape[-1], self.mlp_dim or 4 * y.shape[-1], y.shape[-1]],
+        layer_dims=[y.shape[-1], int(y.shape[-1]/32), y.shape[-1]],
         add_bias=True,
         k=3,
       )(y.reshape((-1, y.shape[-1])))[0].reshape(x.shape)
@@ -151,8 +151,8 @@ class Encoder(nn.Module):
           )
       x, scan_out = nn.scan(
           block,
-          variable_axes={"params": 0},
-          split_rngs={"params": True, "dropout": True},
+          variable_axes={"params": 0, "state": 1},
+          split_rngs={"params": True, "state": True, "dropout": True},
           in_axes=nn.broadcast,
           length=self.depth)(
               name="encoderblock",
