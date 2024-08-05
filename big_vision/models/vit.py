@@ -30,6 +30,8 @@ import jax.numpy as jnp
 import numpy as np
 import scipy.ndimage
 
+from jaxkan.models.KAN import KAN
+
 
 def posemb_sincos_2d(h, w, width, temperature=10_000., dtype=jnp.float32):
   """Follows the MoCo v3 logic."""
@@ -84,6 +86,7 @@ class Encoder1DBlock(nn.Module):
   dtype_mm: str = "float32"
   mask: Optional[jnp.ndarray] = None
   normalize_qk: bool = False
+  kan: bool = True
 
   @nn.compact
   def __call__(self, x, deterministic=True):
@@ -102,13 +105,23 @@ class Encoder1DBlock(nn.Module):
     x = out["+sa"] = x + y
 
     y = nn.LayerNorm()(x)
-    y = out["mlp"] = MlpBlock(
-        mlp_dim=self.mlp_dim, dropout=self.dropout,
-        dtype_mm=self.dtype_mm,
-    )(y, deterministic)
+    if self.kan:
+      y = out["kan"] = KAN(
+        layer_dims=[y.shape[-1], self.mlp_dim or 4 * y.shape[-1], y.shape[-1]],
+        add_bias=True,
+        k=3,
+      )(y.reshape((-1, y.shape[-1])))[0].reshape(x.shape)
+    else:
+      y = out["mlp"] = MlpBlock(
+          mlp_dim=self.mlp_dim, dropout=self.dropout,
+          dtype_mm=self.dtype_mm,
+      )(y, deterministic)
     y = nn.with_logical_constraint(y, ("act_batch", "act_len", "act_emb"))
     y = nn.Dropout(rate=self.dropout)(y, deterministic)
-    x = out["+mlp"] = x + y
+    if self.kan:
+      x = out["+kan"] = x + y
+    else:
+      x = out["+mlp"] = x + y
     x = nn.with_logical_constraint(x, ("act_batch", "act_len", "act_emb"))
     return x, out
 

@@ -224,7 +224,10 @@ def main(argv):
 
     batch = jax.tree.map(lambda x: jnp.zeros(x.shape, x.dtype.as_numpy_dtype),
                          train_ds.element_spec)
-    params = model.init(rng, batch["image"], batch["labels"])["params"]
+    # params = model.init(rng, batch["image"], batch["labels"])["params"]
+    out = model.init(rng, batch["image"], batch["labels"])
+    params = out["params"]
+    state = out["state"] if "state" in out else None
 
     # # bs=1 for dummy forward pass.
     # # dummy_img = batch["image"][0:1]
@@ -239,7 +242,7 @@ def main(argv):
       params["head"]["bias"] = jnp.full_like(params["head"]["bias"],
                                              config["init_head_bias"])
 
-    return params
+    return params, state
 
   # This seed makes the Jax part of things (like model init) deterministic.
   # However, full training still won't be deterministic, for example due to the
@@ -273,8 +276,7 @@ def main(argv):
   repl_sharding = jax.sharding.NamedSharding(mesh, P())
 
   write_note("Inferring shardings...")
-  train_state_shape = {"params": params_shape, "opt": opt_shape}
-
+  train_state_shape = {"params": params_shape, "opt": opt_shape} if len(params_shape) != 2 else {"params": params_shape[0], "state": params_shape[1], "opt": opt_shape}
   strategy = config.get("sharding_strategy", [(".*", "replicate")])
   train_state_sharding = bv_sharding.infer_sharding(
       train_state_shape, strategy=strategy, mesh=mesh)
@@ -284,8 +286,8 @@ def main(argv):
   rng_init = u.reshard(rng_init, repl_sharding)
 
   # Parameters and the optimizer are now global (distributed) jax arrays.
-  params = jax.jit(init, out_shardings=train_state_sharding["params"])(rng_init)
-  opt = jax.jit(tx.init, out_shardings=train_state_sharding["opt"])(params)
+  params, state = jax.jit(init, out_shardings=(train_state_sharding["params"], train_state_sharding["state"]))(rng_init)
+  opt = jax.jit(tx.init, out_shardings=train_state_sharding["opt"])((params,state))
 
   rng, rng_loop = jax.random.split(rng, 2)
   rng_loop = u.reshard(rng_loop, repl_sharding)
@@ -293,8 +295,8 @@ def main(argv):
 
   # At this point we have everything we need to form a train state. It contains
   # all the parameters that are passed and updated by the main training step.
-  train_state = {"params": params, "opt": opt}
-  del params, opt  # Delete to avoid memory leak or accidental reuse.
+  train_state = {"params": params, "opt": opt, "state": state}
+  del params, opt, state  # Delete to avoid memory leak or accidental reuse.
 
   write_note("Logging parameter overview...")
   parameter_overview.log_parameter_overview(
@@ -323,9 +325,9 @@ def main(argv):
     # Get device-specific loss rng.
     rng, rng_model = jax.random.split(rng, 2)
 
-    def loss_fn(params):
+    def loss_fn(params, state):
       zimg, ztxt, extras = model.apply(
-          {"params": params}, images, labels,
+          {"params": params, "state": state}, images, labels,
           train=True, rngs={"dropout": rng_model})
       match config.get("loss_fn", "softmax"):
         case "softmax":
@@ -357,9 +359,10 @@ def main(argv):
           raise NotImplementedError(f"Unrecognized loss {config.loss_fn=}")
 
     params, opt = train_state["params"], train_state["opt"]
-    loss, grads = jax.value_and_grad(loss_fn)(params)
-    updates, opt = tx.update(grads, opt, params)
-    params = optax.apply_updates(params, updates)
+    state = train_state["state"]
+    loss, grads = jax.value_and_grad(loss_fn)(params, state)
+    updates, opt = tx.update((grads,state), opt, (params,state))
+    params,state = optax.apply_updates((params,state), updates)
 
     measurements = {"training_loss": loss}
     gs = jax.tree.leaves(bv_optax.replace_frozen(config.schedule, grads, 0.))
@@ -374,7 +377,7 @@ def main(argv):
     measurements["lr"] = lr_schedule * config.get("lr", 1.0)
     measurements["lr_schedule"] = lr_schedule
 
-    return {"params": params, "opt": opt}, measurements
+    return {"params": params, "opt": opt, "state": state}, measurements
 
 ################################################################################
 #                                                                              #
