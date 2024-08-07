@@ -105,7 +105,7 @@ def get_config(arg=None):
         config.model.image.dtype_mm = 'bfloat16'
         config.model.text.dtype_mm = 'bfloat16'
         config.mesh = [("data",-1)]
-        config.sharding_strategy = [('.*', f'fsdp(axis="data", min_size_to_shard_mb=2)')]
+        config.sharding_strategy = [('.*', f'fsdp(axis="data", min_size_to_shard_mb=1)')]
 
     if arg.debug:
         config.input.data = dict(name='coco_captions', split='train', data_dir='gs://us-central2-storage/tensorflow_datasets')
