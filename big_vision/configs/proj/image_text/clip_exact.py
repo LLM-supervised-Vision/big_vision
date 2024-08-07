@@ -146,8 +146,8 @@ def get_config(arg=None):
         config.schedule = [('.*', dict(decay_type='cosine', warmup_steps=warmup_steps))]
 
     if arg.scale == 'large':
-        config.input.batch_size = 65536
-        config.total_steps = 195312
+        config.input.batch_size = 32768
+        config.total_steps = 274658
 
     if arg.lit:
         backbone = 'clip'
