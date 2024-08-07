@@ -5,7 +5,7 @@ from ml_collections import ConfigDict
 def get_config(arg=None):
     arg = bvcc.parse_arg(
         arg, res=224, token_len=77, 
-        loss_fn='softmax', unified=False, 
+        loss_fn='softmax', unified=False, scale='small',
         lit=False, memory_efficient=False, debug=True
     )
     # common variables
@@ -144,6 +144,12 @@ def get_config(arg=None):
         config.optax.b2 = 0.95
         warmup_steps = max(int(0.03 * config.total_steps), 100)
         config.schedule = [('.*', dict(decay_type='cosine', warmup_steps=warmup_steps))]
+
+    if arg.scale == 'large':
+        config.input.batch_size = 65536
+        config.model.image.variant = 'L/14'
+        config.model.text.variant = 'L'
+        config.total_steps = 195_312
 
     if arg.lit:
         backbone = 'clip'
