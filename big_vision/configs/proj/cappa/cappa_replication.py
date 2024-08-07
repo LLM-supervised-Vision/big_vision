@@ -50,7 +50,7 @@ def get_config(arg=None):
               'choice(inkey="caption", outkey="text")|'
               f'{tokenizer("text", "labels")}|keep("image", "labels")')
   config.input.pp = pp_laion
-  config.input.data = dict(name='laion400m/images', split='train')  # num_examples=379,600,897
+  config.input.data = dict(name='laion400m/images', split='train',data_dir='gs://us-central2-storage/tensorflow_datasets')  # num_examples=379,600,897
   config.input.shuffle_buffer_size = shuffle_buffer_size
 
   pp_coco = (f'decode|{pp_image}|'
