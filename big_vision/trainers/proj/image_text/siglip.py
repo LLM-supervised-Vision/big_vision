@@ -284,7 +284,7 @@ def main(argv):
   rng_init = u.reshard(rng_init, repl_sharding)
 
   # Parameters and the optimizer are now global (distributed) jax arrays.
-  params = jax.jit(init, out_shardings=train_state_sharding["params"],backend='cpu')(rng_init)
+  params = jax.jit(init, out_shardings=train_state_sharding["params"])(rng_init)
   opt = jax.jit(tx.init, out_shardings=train_state_sharding["opt"])(params)
 
   rng, rng_loop = jax.random.split(rng, 2)

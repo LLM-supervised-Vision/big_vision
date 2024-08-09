@@ -104,7 +104,7 @@ def get_config(arg=None):
         config.model.text.scan = True
         config.model.image.dtype_mm = 'bfloat16'
         config.model.text.dtype_mm = 'bfloat16'
-        config.mesh = [("data",-1)]
+        config.mesh = [("data",256)]
         config.sharding_strategy = [('.*', f'fsdp(axis="data", min_size_to_shard_mb=1)')]
 
     if arg.debug:
@@ -146,6 +146,12 @@ def get_config(arg=None):
         config.schedule = [('.*', dict(decay_type='cosine', warmup_steps=warmup_steps))]
 
     if arg.scale == 'large':
+        config.input.batch_size = 32768
+        config.total_steps = 274658
+    
+    if arg.scale == 'max':
+        config.model.image.variant = 'L/14'
+        config.model.text.variant = 'L'
         config.input.batch_size = 32768
         config.total_steps = 274658
 
