@@ -104,7 +104,7 @@ def get_config(arg=None):
         config.model.text.scan = True
         config.model.image.dtype_mm = 'bfloat16'
         config.model.text.dtype_mm = 'bfloat16'
-        config.mesh = [("data",128),('model',-1), ('a',1), ('b',1)]
+        config.mesh = [("data",-1)]
         config.sharding_strategy = [('.*', f'fsdp(axis="data", min_size_to_shard_mb=1)')]
 
     if arg.debug:
