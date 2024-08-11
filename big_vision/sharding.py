@@ -109,15 +109,17 @@ def fsdp(axis, min_size_to_shard_mb=4):
   by the total device count.
 
   Args:
-    axis: mesh axis name for FSDP.
+    axis: mesh axis name for FSDP, or a collection of names.
     min_size_to_shard_mb: minimal tensor size to bother with sharding.
 
   Returns:
     A function that updates the sharding spec.
   """
+  axis = axis if isinstance(axis, str) else tuple(axis)
+  axis_tuple = axis if isinstance(axis, tuple) else (axis,)
   def _update_spec(cur_spec, mesh, name, x):
     shape = x.shape
-    axis_size = mesh.shape[axis]
+    axis_size = np.prod([mesh.shape[a] for a in axis_tuple])
 
     if np.prod(shape) * x.dtype.itemsize <= min_size_to_shard_mb * (2 ** 20):
       return cur_spec
@@ -155,4 +157,41 @@ def logical_partitioning():
     if isinstance(cur_spec, nn.LogicallyPartitioned):
       return nn.logical_to_mesh_axes(cur_spec.names)
     return cur_spec
+  return _update_spec
+
+
+@Registry.register("shardings.shard_dim")
+def shard_dim(axis, dim, ignore_ndim_error=False):
+  """Shards the given dimension along the given axis.
+
+  Args:
+    axis: mesh axis name for sharding.
+    dim: dimension to shard (can be negative).
+    ignore_ndim_error: if True, a warning error is logged instead of raising an
+      exception when the given dimension is not compatible with the number of
+      dimensions of the array.
+
+  Returns:
+    A function that updates the sharding spec.
+  """
+  def _update_spec(cur_spec, mesh, name, x):
+    del mesh, x
+    if np.abs(dim) >= len(cur_spec):
+      msg = f"Cannot shard_dim({axis}, {dim}): name={name} cur_spec={cur_spec}"
+      if ignore_ndim_error:
+        logging.warning(msg)
+        return cur_spec
+      else:
+        raise ValueError(msg)
+    pos_dim = dim
+    if pos_dim < 0:
+      pos_dim += len(cur_spec)
+    if cur_spec[pos_dim] is not None:
+      raise ValueError(
+          f"Already sharded: shard_dim({axis}, {dim}):"
+          f" name={name} cur_spec={cur_spec}"
+      )
+    new_spec = cur_spec[:pos_dim] + (axis,) + cur_spec[pos_dim + 1 :]
+    return new_spec
+
   return _update_spec
