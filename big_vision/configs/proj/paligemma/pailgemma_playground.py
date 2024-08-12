@@ -34,8 +34,8 @@ def training_data(res, *, final_split, prefix, text_len=32):
 def get_config(arg=None):
   c = bvcc.parse_arg(
       arg, res=224,
-      freeze_vit=False, freeze_llm=True,
-      batch_size=8192, total_samples=3.0, wandb=True
+      mode='generative', freeze_vit=False, freeze_llm=True,
+      batch_size=8192, total_samples=3.0, debug=False,
   )
   c.name = 'what the hell is this???'
 
@@ -59,7 +59,6 @@ def get_config(arg=None):
       ('llm/.*', None if c.freeze_llm else sched),
   ]
 
-
   # Model section.
   c.model_name = 'proj.paligemma.paligemma'
   c.model = {}
@@ -79,6 +78,13 @@ def get_config(arg=None):
   c.log_training_steps = 50
   c.ckpt_steps = 1_000
   c.pp_modules = ['ops_general', 'ops_image', 'ops_text', 'proj.paligemma.ops']
-
   c.seed = 0
+  c.wandb = not c.debug
+
+  if c.debug:
+    c.input.shuffle_buffer_size = None
+    c.input.data.split = c.input.data.split.split('[')[0] + '[:16]'
+    c.input.batch_size = 16
+    c.total_steps = 100
+
   return c

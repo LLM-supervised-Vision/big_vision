@@ -118,8 +118,7 @@ def main(argv):
   # Initialize wandb.
   if config.get("wandb", False) and jax.process_index() == 0:
     wandb.login(key='97c3b77fabd233d22d7b9a71319fce93f7400469')
-    tag_dict = {"softmax": "clip", "sigmoid": "siglip"}
-    tag = tag_dict[config.get("loss_fn", "sigmoid")]
+    tag = "paligemma"
     wandb.init(
       project="cambrian_vlm",
       entity="ziteng_wang",
@@ -361,35 +360,41 @@ def main(argv):
     imgs, txts, mask_ar = batch["image"], batch["text"], batch["mask_ar"]
 
     def loss_fn(params):
-      text_logits, _ = model.apply(
+      text_logits, out = model.apply(
           {"params": params}, imgs, txts[:, :-1], mask_ar[:, :-1],
           train=True, rngs={"dropout": rng_model})
+      
+      match config.get("mode", "generative"):
+        case "contrastive":
+          return NotImplementedError("Contrastive loss not implemented.")
+        case "generative":
+          logp = jax.nn.log_softmax(text_logits, axis=-1)
+          targets = jax.nn.one_hot(txts[:, 1:], text_logits.shape[-1])
+          off_value = config.get("label_smoothing", 0.0)
+          if off_value > 0:
+            denom = text_logits.shape[-1] - 1
+            targets = jnp.where(
+                targets == 1.0, 1.0 - off_value, off_value / denom)
 
-      logp = jax.nn.log_softmax(text_logits, axis=-1)
-      targets = jax.nn.one_hot(txts[:, 1:], text_logits.shape[-1])
-      off_value = config.get("label_smoothing", 0.0)
-      if off_value > 0:
-        denom = text_logits.shape[-1] - 1
-        targets = jnp.where(
-            targets == 1.0, 1.0 - off_value, off_value / denom)
+          # Sum across vocab.
+          token_pplx = jnp.sum(logp * targets, axis=-1)
 
-      # Sum across vocab.
-      token_pplx = jnp.sum(logp * targets, axis=-1)
+          # Shift by one since the loss is on the _next_ token.
+          mask_loss = batch["mask_loss"][:, 1:]
+          token_pplx = token_pplx * mask_loss
+          pplx = -jnp.sum(token_pplx, axis=-1)
+          pplx /= jnp.clip(jnp.sum(mask_loss, axis=-1), 1)
 
-      # Shift by one since the loss is on the _next_ token.
-      mask_loss = batch["mask_loss"][:, 1:]
-      token_pplx = token_pplx * mask_loss
-      pplx = -jnp.sum(token_pplx, axis=-1)
-      pplx /= jnp.clip(jnp.sum(mask_loss, axis=-1), 1)
+          # In this dict the (outer) reduction is along batch.
+          measurements = dict(
+              training_loss=jnp.mean(pplx),
+              avg_sup_seqlen=jnp.mean(jnp.sum(mask_loss, axis=-1)),
+              max_sup_seqlen=jnp.max(jnp.sum(mask_loss, axis=-1)),
+          )
 
-      # In this dict the (outer) reduction is along batch.
-      measurements = dict(
-          training_loss=jnp.mean(pplx),
-          avg_sup_seqlen=jnp.mean(jnp.sum(mask_loss, axis=-1)),
-          max_sup_seqlen=jnp.max(jnp.sum(mask_loss, axis=-1)),
-      )
-
-      return measurements["training_loss"], measurements
+          return measurements["training_loss"], measurements
+        case _:
+          raise ValueError(f"Unknown mode: {config.get('mode')}")
 
     params, opt = train_state["params"], train_state["opt"]
     (_, measurements), grads = jax.value_and_grad(loss_fn, has_aux=True)(params)
