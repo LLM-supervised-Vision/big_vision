@@ -35,17 +35,19 @@ def get_config(arg=None):
   c = bvcc.parse_arg(
       arg, res=224,
       freeze_vit=False, freeze_llm=True,
+      batch_size=8192, total_samples=3.0, wandb=True
   )
   c.name = 'what the hell is this???'
 
   # Input section
   c.input = training_data(c.res, final_split=False, prefix='', text_len=64)
 
-  c.total_epochs = 1
-  c.input.batch_size = 256
+  # c.total_epochs = 1
+  c.input.batch_size = c.batch_size
+  c.total_steps = int(c.total_samples*1e9 / c.input.batch_size)
   c.optax_name = 'scale_by_adam'
   c.optax = dict(b2=0.999)
-  c.lr = 1e-5
+  c.lr = 1e-3
   c.wd = 0.0
   c.grad_clip_norm = 1.0
   c.label_smoothing = 0.0
