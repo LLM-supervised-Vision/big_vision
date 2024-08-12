@@ -1,5 +1,6 @@
 import big_vision.configs.common as bvcc
 from ml_collections import ConfigDict
+from big_vision.configs.proj.paligemma.transfers.common import combine_and_keep_train, combine_and_keep_eval, TOKENIZER
 
 def training_data(res, *, final_split, prefix, text_len=32):
   """Creates training data config.
@@ -20,9 +21,12 @@ def training_data(res, *, final_split, prefix, text_len=32):
       split='train' if final_split else 'train',
       data_dir='gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets'
   )
-  # c.pp = '|'.join([
-      # f'decode|resize({res})|value_range(-1, 1)',
-      
+  c.pp = '|'.join([
+      f'decode|resize({res})|value_range(-1, 1)',
+      f'strfmt("{prefix}", outkey="prefix")',
+      'copy(inkey="caption", outkey="suffix")',
+      combine_and_keep_train(text_len),
+  ])
   return c
 
 
@@ -35,20 +39,7 @@ def get_config(arg=None):
   c.name = 'what the hell is this???'
 
   # Input section
-  c.input = ConfigDict()
-  c.input.data = dict(
-      name='laion400m/images',
-      split='train',
-      data_dir='gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets'
-  )
-  tokenizer = lambda inkey, outkey: (
-      f'tokenize(max_len={64}, model="c4_en", clip_bpe=False, '
-      f'eos="sticky", pad_value=1, inkey="{inkey}", outkey="{outkey}")'
-  )
-  c.input.pp = (
-      f'decode|resize({c.res})|flip_lr|value_range(-1,1)|'
-      f'{tokenizer("caption", "labels")}|keep("image", "labels")'
-  )
+  c.input = training_data(c.res, final_split=False, prefix='', text_len=64)
 
   c.total_epochs = 1
   c.input.batch_size = 256
