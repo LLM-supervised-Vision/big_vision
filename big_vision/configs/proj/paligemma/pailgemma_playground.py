@@ -57,6 +57,7 @@ def get_config(arg=None):
   c.schedule = [
       ('img/.*', None if c.freeze_vit else sched),
       ('llm/.*', None if c.freeze_llm else sched),
+      ('t', sched),
   ]
 
   # Model section.

@@ -366,7 +366,19 @@ def main(argv):
       
       match config.get("mode", "generative"):
         case "contrastive":
-          return NotImplementedError("Contrastive loss not implemented.")
+          zimg = out['img/zimg'].mean(axis=1)
+          zimg_norm = jnp.linalg.norm(zimg, axis=-1, keepdims=True)
+          zimg = zimg / (zimg_norm + 1e-8)
+          llm_pre_logits_txt = out['llm/pre_logits'][:,out['img/zimg'].shape[1]:,:]
+          eos_mask = txts[:, 1:] == 1
+          ztxt = (llm_pre_logits_txt * eos_mask[:,:,None]).sum(axis=1) # use pre-logits of eos token as ztxt
+          ztxt_norm = jnp.linalg.norm(ztxt, axis=-1, keepdims=True) 
+          ztxt = ztxt / (ztxt_norm + 1e-8)
+          contrastive_logits = jnp.dot(zimg, ztxt.T) * out["t"]
+          l1 = -jnp.diag(jax.nn.log_softmax(contrastive_logits, axis=1))  # NLL img->txt
+          l2 = -jnp.diag(jax.nn.log_softmax(contrastive_logits, axis=0))  # NLL txt->img
+          co_loss = jnp.mean(0.5 * (l1 + l2))
+          return co_loss, {"training_loss": co_loss}
         case "generative":
           logp = jax.nn.log_softmax(text_logits, axis=-1)
           targets = jax.nn.one_hot(txts[:, 1:], text_logits.shape[-1])

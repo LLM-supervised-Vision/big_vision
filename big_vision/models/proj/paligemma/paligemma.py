@@ -57,6 +57,7 @@ class Model(nn.Module):
   img: Optional[ConfigDict] = None
   llm_model: str = "proj.paligemma.gemma_bv"
   llm: Optional[ConfigDict] = None
+  temperature_init: float = 1/0.07
 
   def setup(self):
     self._llm = importlib.import_module(
@@ -67,6 +68,8 @@ class Model(nn.Module):
     self._img_model = importlib.import_module(
         f"big_vision.models.{self.img_model}"
     ).Model(**img_config, name="img")
+
+    self.t = self.param("t",lambda key, shape, dtype: self.temperature_init * jnp.ones(shape, dtype), (1,), jnp.float32)
 
   def embed_image(self, image, train=False):
     out = {}
@@ -158,6 +161,7 @@ class Model(nn.Module):
     text_logits = self._llm.compute_logits(text_pre_logits, train=train)
     out["text_logits"] = text_logits
     out["text_tokens"] = jnp.argmax(text_logits, axis=-1)
+    out["t"] = jnp.exp(self.t)
     return text_logits, out
 
   def prefill_cache(self, x, input_mask, mask_ar, *, cache_size):
