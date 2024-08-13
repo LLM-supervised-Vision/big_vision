@@ -19,6 +19,7 @@ def get_config(arg=None):
                           captioning_weight=1.0,
                           total_steps=366_500,
                           batch_size=8*1024,
+                          total_samples=3.0,
                           warmup_steps=10_000,
                           warmup_ratio=0.15,
                           lr=1e-4,
@@ -34,18 +35,7 @@ def get_config(arg=None):
   config.evals = {}
   config.input = {}
   config.input.batch_size = config.batch_size if not config.runlocal else 8
-  step_dict = {
-    512: 5_859_375, 
-    1024: 2_929_688, 
-    2048: 1_464_844, 
-    4096: 732_422, 
-    8_192: 366_211, 
-    10_240: 292_969, 
-    12_288: 244_141, 
-    16_384: 183_105, 
-    32_768: 91_553
-  }
-  config.total_steps = step_dict[config.batch_size] if not config.runlocal else 1
+  config.total_steps = int(config.total_samples*1e9 / config.batch_size) if not config.runlocal else 1
   shuffle_buffer_size = 50_000 if not config.runlocal else 50
 
   res = 224
