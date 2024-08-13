@@ -2,14 +2,13 @@ import big_vision.configs.common as bvcc
 from ml_collections import ConfigDict
 from big_vision.configs.proj.paligemma.transfers.common import combine_and_keep_train, combine_and_keep_eval, TOKENIZER
 
-def training_data(res, *, final_split, prefix, text_len=32):
+def training_data(res, *, prefix, text_len=32):
   """Creates training data config.
 
   You can add more arguments beside `res`, but give them good defaults.
   
   Args:
     res: The requested image resolution (eg 224).
-    final_split: Train on all train+val data.
     text_len: sequence length.
 
   Returns:
@@ -18,17 +17,16 @@ def training_data(res, *, final_split, prefix, text_len=32):
   c = bvcc.parse_arg('')  # Just make a configdict without extra import.
   c.data = dict(
       name='laion400m/images',
-      split='train' if final_split else 'train',
+      split='train',
       data_dir='gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets'
   )
   c.pp = '|'.join([
-      f'decode|resize({res})|value_range(-1, 1)',
+      f'decode|resize({res})|value_range(-1,1)',
       f'strfmt("{prefix}", outkey="prefix")',
       'copy(inkey="caption", outkey="suffix")',
       combine_and_keep_train(text_len),
   ])
   return c
-
 
 
 def get_config(arg=None):
@@ -40,7 +38,7 @@ def get_config(arg=None):
   c.name = 'what the hell is this???'
 
   # Input section
-  c.input = training_data(c.res, final_split=False, prefix='', text_len=64)
+  c.input = training_data(c.res, prefix='', text_len=64)
 
   # c.total_epochs = 1
   c.input.batch_size = c.batch_size
@@ -63,7 +61,6 @@ def get_config(arg=None):
   # Model section.
   c.model_name = 'proj.paligemma.paligemma'
   c.model = {}
-  # c.model.img = dict(variant='So400m/14', pool_type='none', scan=True)
   c.model.img = dict(variant='So400m/14', pool_type='none', scan=True)
   c.model.llm = dict(vocab_size=256_000 + 1024 + 128, dropout=0.0)
   c.model_init = ''
@@ -84,7 +81,6 @@ def get_config(arg=None):
 
   if c.debug:
     c.input.shuffle_buffer_size = None
-    c.input.data.split = c.input.data.split.split('[')[0] + '[:16]'
     c.input.batch_size = 16
     c.total_steps = 100
 
