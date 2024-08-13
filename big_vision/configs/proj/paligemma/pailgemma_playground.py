@@ -61,10 +61,10 @@ def get_config(arg=None):
   # Model section.
   c.model_name = 'proj.paligemma.paligemma'
   c.model = {}
-  c.model.img = dict(variant='So400m/14', pool_type='none', scan=True)
+  c.model.img = dict(variant='So400m/14', pool_type='none', head_zeroinit=False, scan=True)
   c.model.llm = dict(vocab_size=256_000 + 1024 + 128, dropout=0.0)
-  c.model_init = ''
   # c.model_init = f'pt_{c.res}'
+  c.model_init = {'img': None, 'llm': '/home/austinwang/gemma2b.npz'}
 
   # FSDP strategy.
   c.mesh = [('data', -1)]
@@ -82,6 +82,7 @@ def get_config(arg=None):
   if c.debug:
     c.input.shuffle_buffer_size = None
     c.input.batch_size = 16
-    c.total_steps = 100
+    c.total_steps = 10
+    c.log_training_steps = 1
 
   return c
