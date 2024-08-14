@@ -44,9 +44,9 @@ def get_config(arg=None):
   c.input.batch_size = c.batch_size
   c.total_steps = int(c.total_samples*1e9 / c.input.batch_size)
   c.optax_name = 'scale_by_adam'
-  c.optax = dict(b2=0.999)
+  c.optax = dict(b1=0.9,b2=0.95)
   c.lr = 1e-3
-  c.wd = 0.0
+  c.wd = 0.1
   c.grad_clip_norm = 1.0
   c.label_smoothing = 0.0
 
@@ -81,7 +81,7 @@ def get_config(arg=None):
 
   if c.debug:
     c.input.shuffle_buffer_size = None
-    c.input.batch_size = 16
+    c.input.batch_size = 32
     c.total_steps = 10
     c.log_training_steps = 1
 

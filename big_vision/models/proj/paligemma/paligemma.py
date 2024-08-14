@@ -69,7 +69,8 @@ class Model(nn.Module):
         f"big_vision.models.{self.img_model}"
     ).Model(**img_config, name="img")
 
-    self.t = self.param("t",lambda key, shape, dtype: self.temperature_init * jnp.ones(shape, dtype), (1,), jnp.float32)
+    temp_init = jnp.log(self.temperature_init)
+    self.t = self.param("t",lambda key, shape, dtype: temp_init * jnp.ones(shape, dtype), (1,), jnp.float32)
 
   def embed_image(self, image, train=False):
     out = {}
