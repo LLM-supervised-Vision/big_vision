@@ -370,9 +370,20 @@ def main(argv):
           zimg_norm = jnp.linalg.norm(zimg, axis=-1, keepdims=True)
           zimg = zimg / (zimg_norm + 1e-8)
 
-          llm_pre_logits_txt = out['llm/pre_logits'][:,out['img/zimg'].shape[1]:,:]
-          eos_mask = txts[:, 1:] == 1
-          ztxt = (llm_pre_logits_txt * eos_mask[:,:,None]).sum(axis=1) # use pre-logits of eos token as ztxt
+          # # eos
+          # llm_pre_logits_txt = out['llm/pre_logits'][:,out['img/zimg'].shape[1]:,:]
+          # eos_mask = txts[:, 1:] == 1
+          # ztxt = (llm_pre_logits_txt * eos_mask[:,:,None]).sum(axis=1) # use pre-logits of eos token as ztxt
+
+          # # new eos
+          # eos_mask = jnp.concat([jnp.zeros((txts.shape[0], out['img/zimg'].shape[1])), txts[:, 1:] == 1], axis=1)
+          # ztxt = (out['llm/pre_logits'] * eos_mask[:,:,None]).sum(axis=1) # use pre-logits of eos token as ztxt
+
+          # gap
+          ztxt = out['llm/pre_logits'][:,out['img/zimg'].shape[1]:,:].mean(axis=1)
+
+          # first
+          # ztxt = out['llm/pre_logits'][:,out['img/zimg'].shape[1],:]
           ztxt_norm = jnp.linalg.norm(ztxt, axis=-1, keepdims=True) 
           ztxt = ztxt / (ztxt_norm + 1e-8)
 
