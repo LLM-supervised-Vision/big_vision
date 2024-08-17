@@ -73,8 +73,8 @@ def main(argv):
   del argv
 
   # This is needed on multihost systems, but crashes on non-TPU single-host.
-  if os.environ.get("BV_JAX_INIT"):
-    jax.distributed.initialize()
+  # if os.environ.get("BV_JAX_INIT"):
+  jax.distributed.initialize()
 
   # Make sure TF does not touch GPUs.
   tf.config.set_visible_devices([], "GPU")
