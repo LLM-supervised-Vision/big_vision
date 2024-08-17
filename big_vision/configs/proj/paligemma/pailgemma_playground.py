@@ -61,7 +61,7 @@ def get_config(arg=None):
   # Model section.
   c.model_name = 'proj.paligemma.paligemma'
   c.model = {}
-  c.model.img = dict(variant='So400m/14', pool_type='none', head_zeroinit=False, scan=True, dtype_mm='bfloat16')
+  c.model.img = dict(variant='B/16', pool_type='none', head_zeroinit=False, scan=True, dtype_mm='bfloat16')
   c.model.llm = dict(vocab_size=256_000 + 1024 + 128, dropout=0.0, scan=True)
   # c.model_init = f'pt_{c.res}'
   c.model_init = {'img': None, 'llm': '/home/austinwang/gemma2b.npz'}
