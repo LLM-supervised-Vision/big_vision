@@ -46,7 +46,7 @@ def get_config(arg=None):
   c.optax_name = 'scale_by_adam'
   c.optax = dict(b1=0.9,b2=0.95)
   c.lr = 1e-3
-  c.wd = 0.1
+  c.wd = 1e-4
   c.grad_clip_norm = 1.0
   c.label_smoothing = 0.0
 
