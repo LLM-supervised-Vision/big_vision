@@ -227,7 +227,7 @@ def main(argv):
                          train_ds.element_spec)
     _, variables = model.apply(  # flax init is just apply with mutable.
         {"params": partial_params or {}},
-        batch["image"], batch["text"][:, :-1], batch["mask_ar"][:, :-1],
+        batch["image"], batch["text"][:, :-1], batch["mask_ar"][:, :-1], is_blind=config.get("mode")=="contrastive",
         rngs={"params": rng, "dropout": rng},
         mutable=["params"])
     return flax.core.unfreeze(variables["params"])
@@ -360,11 +360,12 @@ def main(argv):
     imgs, txts, mask_ar = batch["image"], batch["text"], batch["mask_ar"]
 
     def loss_fn(params):
+      mode = config.get("mode", "generative")
       text_logits, out = model.apply(
-          {"params": params}, imgs, txts[:, :-1], mask_ar[:, :-1],
+          {"params": params}, imgs, txts[:, :-1], mask_ar[:, :-1], is_blind=mode=="contrastive",
           train=True, rngs={"dropout": rng_model})
       
-      match config.get("mode", "generative"):
+      match mode:
         case "contrastive":
           zimg = out['img/zimg'].mean(axis=1)
           zimg_norm = jnp.linalg.norm(zimg, axis=-1, keepdims=True)

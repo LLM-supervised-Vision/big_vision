@@ -97,7 +97,7 @@ class Model(nn.Module):
     return ztxt, out
 
   def embed_image_and_text(self, image, text, *,
-                           input_mask=None, mask_ar=None, train=False):
+                           input_mask=None, mask_ar=None, is_blind=False, train=False):
     """Concats image/text into a sequence of embeded tokens to pass to `llm`.
 
     Args:
@@ -128,11 +128,11 @@ class Model(nn.Module):
     _, img_len, _ = zimg.shape
     pad_width = ((0, 0), (img_len, 0))
     mask_ar = jnp.pad(mask_ar, pad_width, constant_values=0)
-    input_mask = jnp.pad(input_mask, pad_width, constant_values=True)
+    input_mask = jnp.pad(input_mask, pad_width, constant_values=not is_blind)
 
     return (x, input_mask, mask_ar), {**out_img, **out_txt}
 
-  def __call__(self, image, text, mask_ar, train=False):
+  def __call__(self, image, text, mask_ar, is_blind=False, train=False):
     """Concats image/text and returns text logits.
 
     Args:
@@ -148,7 +148,7 @@ class Model(nn.Module):
     """
     # Embed the image and text.
     (x, input_mask, mask_ar), out = self.embed_image_and_text(
-        image, text, mask_ar=mask_ar, train=train)
+        image, text, mask_ar=mask_ar, is_blind=is_blind, train=train)
 
     # Call transformer on the embedded token sequence.
     attn_mask = out["attn_mask"] = make_attn_mask(input_mask, mask_ar)
