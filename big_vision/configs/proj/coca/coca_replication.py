@@ -142,8 +142,9 @@ def get_config(arg=None):
   # config.sharding_strategy = [('.*', f'fsdp(axis="fsdp", min_size_to_shard_mb=2)')]
 
   # config.optax_name = 'big_vision.scale_by_adafactor'
+  # config.optax = dict(beta2_cap=0.95)
   config.optax_name = 'scale_by_adam'
-  config.optax = dict(beta2_cap=0.95)
+  config.optax = dict(b1=0.9, b2=0.95, mu_dtype='bfloat16')
   config.grad_clip_norm = 1.0
   config.label_smoothing = 0.0
 
