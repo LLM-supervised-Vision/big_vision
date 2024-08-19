@@ -122,9 +122,9 @@ def prepare_datasets(
 
   ds_images = dataset.enumerate().map(add_id).map(
       pp_builder.get_preprocess_fn(f"{pp_img}|keep('id', 'image')"))
-  ds_texts = dataset.enumerate().flat_map(get_captions).map(
-      pp_builder.get_preprocess_fn(
-          f"{pp_txt}|keep('id', 'caption_i', 'labels')"))
+  keep_str = "|keep('id', 'caption_i', 'labels', 'mask_ar')"
+  ds_texts = dataset.enumerate().flat_map(get_captions).map(pp_builder.get_preprocess_fn(f"{pp_txt}{keep_str}"))
+          # f"{pp_txt}|keep('id', 'caption_i', 'labels')"))
   if cache_final:
     ds_images, ds_texts = ds_images.cache(), ds_texts.cache()
   return ds_images, ds_texts
@@ -277,6 +277,7 @@ class Evaluator:
     """Returns evaluation results."""
     images = self._embed("image", train_state, self.ds_images,
                          self._embed_images_p, ("id",))
+    logging.info(f"self.ds_texts: {self.ds_texts}")
     texts = self._embed("labels", train_state, self.ds_texts,
                         self._embed_texts_p, ("id", "caption_i"))
     # Shapes: (nimg, emb) * (emb, ntxt) -> (nimg, ntxt)

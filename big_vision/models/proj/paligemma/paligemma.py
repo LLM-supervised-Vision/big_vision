@@ -146,6 +146,18 @@ class Model(nn.Module):
       float32[B, T, V] logits for the `text` input, and an out-dict of named
       intermediates.
     """
+    if text is None:
+      assert image is not None, "text should be None if image is None."
+      assert mask_ar is None, "mask_ar should be None if text is None."
+      zimg, out_img = self.embed_image(image, train=train)
+      return zimg, out_img
+    
+    if image is None:
+      assert mask_ar is not None, "mask_ar should not be None if image is None."
+      assert text is not None, "image should be None if text is None."
+      image = jnp.zeros((text.shape[0], 1, 1, 3), jnp.float32)
+      is_blind = True
+
     # Embed the image and text.
     (x, input_mask, mask_ar), out = self.embed_image_and_text(
         image, text, mask_ar=mask_ar, is_blind=is_blind, train=train)

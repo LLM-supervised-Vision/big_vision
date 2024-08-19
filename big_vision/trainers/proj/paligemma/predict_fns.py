@@ -38,6 +38,7 @@ def get_all(model):
       "decode": _decode,
       "decode_with_logp": _decode_with_logp,
       "beam_decode": _beam_decode,
+      "contrastive_logits": _contrastive_logits,
   }
   return {name: functools.partial(fn, model=model) for name, fn in fns.items()}
 
@@ -50,6 +51,27 @@ def _logits(train_state, batch, *, model):
   )
   return text_logits, out
 
+def _contrastive_logits(train_state, batch, *, model):
+  zimg, ztxt, out = None, None, None
+  images, text, mask = batch.get("image", None), batch.get("labels", None), batch.get("mask_ar", None)
+  if text is not None: text = text[:, :-1]
+  if mask is not None: mask = mask[:, :-1]
+
+  _, out = model.apply(
+      {"params": train_state["params"]},
+      images, text, mask, is_blind=True
+  )
+  if 'img/zimg' in out:
+    zimg = out['img/zimg'].mean(axis=1)
+    zimg_norm = jnp.linalg.norm(zimg, axis=-1, keepdims=True)
+    zimg = zimg / (zimg_norm + 1e-8)
+
+  if 'llm/pre_logits' in out:
+    ztxt = out['llm/pre_logits'][:,out['img/zimg'].shape[1]:,:].mean(axis=1)
+    ztxt_norm = jnp.linalg.norm(ztxt, axis=-1, keepdims=True) 
+    ztxt = ztxt / (ztxt_norm + 1e-8)
+
+  return zimg, ztxt, out
 
 def _image_avg_repr(train_state, batch, *, model, key="img/pre_logits"):
   zimg, out = model.apply(

@@ -59,7 +59,7 @@ def combine_and_keep_eval(text_len, keep=tuple(), before=(), sep='\n'):
       f'tolen({text_len}, pad_value=0, key="text")',  # value doesn't matter.
       f'tolen({text_len}, pad_value=1, key="mask_ar")',
       f'tolen({text_len}, pad_value=0, key="mask_input")',
-      # And we need to keep everything that makes our evaluator happy.
-      'keep(' + ', '.join(f'"{x}"' for x in (
-          'image', 'text', 'mask_ar', 'mask_input') + tuple(keep)) + ')',
+      # # And we need to keep everything that makes our evaluator happy.
+      # 'keep(' + ', '.join(f'"{x}"' for x in (
+      #     'image', 'text', 'mask_ar', 'mask_input') + tuple(keep)) + ')',
   ])
