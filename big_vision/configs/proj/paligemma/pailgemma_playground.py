@@ -92,8 +92,9 @@ def get_config(arg=None):
   c.wandb = not c.debug
 
   # Evaluation section
-  c.evals = {}
-  add_eval(c, c.res, prefix='')
+  if c.mode == 'contrastive' and c.debug:
+    c.evals = {}
+    add_eval(c, c.res, prefix='')
 
   if c.debug:
     c.input.shuffle_buffer_size = None
