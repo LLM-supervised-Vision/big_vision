@@ -83,7 +83,7 @@ def get_config(arg=None):
   # Evaluation section
   if c.mode == 'contrastive':
     tokenizer = lambda inkey, outkey: (
-      f'tokenize(max_len={arg.token_len}, model="c4_en", clip_bpe={not arg.unified}, '
+      f'tokenize(max_len=64, model="c4_en", clip_bpe=False, '
       f'eos="sticky", pad_value=1, inkey="{inkey}", outkey="{outkey}")'
     )
     c.evals = {}
