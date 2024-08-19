@@ -107,17 +107,6 @@ def get_config(arg=None):
         config.mesh = [("data",-1)]
         config.sharding_strategy = [('.*', f'fsdp(axis="data", min_size_to_shard_mb=1)')]
 
-    if arg.debug:
-        config.input.data = dict(name='coco_captions', split='train', data_dir='gs://us-central2-storage/tensorflow_datasets')
-        config.input.pp = (f'decode|resize({arg.res})|value_range(-1, 1)|'
-                'coco_captions("captions")|choice(inkey="captions", outkey="text")|'
-                f'{tokenizer("text", "labels")}|keep("image", "labels")')
-
-        config.input.batch_size = 16
-        config.model.image.variant = 'mu/16'
-        config.model.text.variant = 'mu'
-        config.wandb = False
-
     if arg.unified or arg.loss_fn == 'sigmoid':
         config.input.batch_size = 16_384
         config.input.pp_late = ('')
@@ -204,6 +193,15 @@ def get_config(arg=None):
             ('.*', dict(decay_type='cosine', warmup_steps=warmup_steps)),
         ]
 
-        
+    if arg.debug:
+        config.input.data = dict(name='coco_captions', split='train', data_dir='gs://us-central2-storage/tensorflow_datasets')
+        config.input.pp = (f'decode|resize({arg.res})|value_range(-1, 1)|'
+                'coco_captions("captions")|choice(inkey="captions", outkey="text")|'
+                f'{tokenizer("text", "labels")}|keep("image", "labels")')
+
+        config.input.batch_size = 16
+        config.model.image.variant = 'mu/16'
+        config.model.text.variant = 'mu'
+        config.wandb = False
 
     return config
