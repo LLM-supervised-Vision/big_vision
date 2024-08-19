@@ -141,15 +141,16 @@ def get_config(arg=None):
   # config.mesh = [("fsdp",-1)]
   # config.sharding_strategy = [('.*', f'fsdp(axis="fsdp", min_size_to_shard_mb=2)')]
 
-  config.optax_name = 'big_vision.scale_by_adafactor'
+  # config.optax_name = 'big_vision.scale_by_adafactor'
+  config.optax_name = 'scale_by_adam'
   config.optax = dict(beta2_cap=0.95)
   config.grad_clip_norm = 1.0
   config.label_smoothing = 0.0
 
   config.warmup_steps = max(int(config.warmup_ratio * config.total_steps), 100)
-  schedule = dict(decay_type='linear',
+  schedule = [('.*',dict(decay_type='linear',
                   warmup_steps=config.warmup_steps
-                  if not config.runlocal else 5)
+                  if not config.runlocal else 5))]
 
   # Standard schedule
   config.lr = config.lr # 5e-5

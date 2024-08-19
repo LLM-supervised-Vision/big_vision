@@ -381,7 +381,7 @@ class Model(nn.Module):
     )
 
     temp_init = jnp.log(self.temperature_init)
-    self.t_prime = self.param("t", lambda key, shape, dtype: temp_init * jnp.ones(shape, dtype),(1,), self.dtype_mm)
+    self.t = self.param("t", lambda key, shape, dtype: temp_init * jnp.ones(shape, dtype),(1,), jnp.float32)
 
   def encode(self, image, train=False, return_enc_features=False):
     """Encodes input image or embeddings."""
@@ -481,8 +481,8 @@ class Model(nn.Module):
       return encoded, out
 
     out = {}
-    out["t"] = jnp.exp(self.t_prime)
-    out["t/parameter"] = self.t_prime
+    out["t"] = jnp.exp(self.t)
+    out["t/parameter"] = self.t
 
     contrastive_zimg, captioning_zimg, contrastive_ztxt, decoded = None, None, None, None
     assert image is not None or text is not None, "At least one of image or text must be provided."
