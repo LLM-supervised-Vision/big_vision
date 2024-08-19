@@ -1,5 +1,6 @@
-import big_vision.configs.common as bvcc
 from ml_collections import ConfigDict
+import big_vision.configs.common as bvcc
+from big_vision.configs.proj.image_text import common
 from big_vision.configs.proj.paligemma.transfers.common import combine_and_keep_train, combine_and_keep_eval, TOKENIZER
 
 def training_data(res, *, prefix, text_len=32):
@@ -78,6 +79,24 @@ def get_config(arg=None):
   c.pp_modules = ['ops_general', 'ops_image', 'ops_text', 'proj.paligemma.ops']
   c.seed = 0
   c.wandb = not c.debug
+
+  # Evaluation section
+  if c.mode == 'contrastive':
+    tokenizer = lambda inkey, outkey: (
+      f'tokenize(max_len={arg.token_len}, model="c4_en", clip_bpe={not arg.unified}, '
+      f'eos="sticky", pad_value=1, inkey="{inkey}", outkey="{outkey}")'
+    )
+    c.evals = {}
+    c.evals.retrieval_coco = common.get_coco(
+        pp_img=f'resize(224)|value_range(-1, 1)',
+        pp_txt=tokenizer('texts','labels'),
+        log_steps=1000,
+    )
+    c.evals.zeroshot_imagenet = common.get_disclf(
+      sz=224, pp_txt=tokenizer('texts','labels'), 
+      dataset_names=('imagenet2012','imagenet_v2','imagenet2012_real'),
+      log_steps=1000,
+    )
 
   if c.debug:
     c.input.shuffle_buffer_size = None
