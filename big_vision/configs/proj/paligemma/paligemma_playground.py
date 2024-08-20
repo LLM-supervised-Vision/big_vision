@@ -79,12 +79,18 @@ def get_config(arg=None):
   c.label_smoothing = 0.0
 
   # Learning-rate schedule. Probably is fine like this.
-  sched = dict(decay_type='cosine', warmup_percent=0.05)
+  sched = dict(decay_type='cosine', warmup_percent=0.03)
   c.schedule = [
       ('img/.*', None if c.freeze_vit else sched),
       ('llm/.*', None if c.freeze_llm else sched),
       ('t', sched),
   ]
+  if not c.freeze_vit and not c.freeze_llm:
+    c.lr_mults = [
+      ('img/.*', 1.0),
+      ('llm/.*', 0.1),
+      ('t', 1.0),
+    ]
 
   # Model section.
   c.model_name = 'proj.paligemma.paligemma'
