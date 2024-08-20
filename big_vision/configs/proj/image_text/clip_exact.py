@@ -106,6 +106,13 @@ def get_config(arg=None):
         config.model.text.dtype_mm = 'bfloat16'
         config.mesh = [("data",-1)]
         config.sharding_strategy = [('.*', f'fsdp(axis="data", min_size_to_shard_mb=1)')]
+        # config.mesh = [("data", -1), ("model", 1)]
+        # config.sharding_strategy = [
+        #     ("embedding.*", "replicate"),
+        #     (".*Dense_.*", f"shard_dim('model', 1)"),
+        #     (".*(key|value|query|).*", f"shard_dim('model', 1)"),
+        #     (".*", f"fsdp(axis=('data', 'model'), min_size_to_shard_mb=1)"),
+        # ]
 
     if arg.unified or arg.loss_fn == 'sigmoid':
         config.input.batch_size = 16_384
@@ -199,10 +206,10 @@ def get_config(arg=None):
                 'coco_captions("captions")|choice(inkey="captions", outkey="text")|'
                 f'{tokenizer("text", "labels")}|keep("image", "labels")')
 
-        # config.input.batch_size = 16
-        # config.model.image.variant = 'mu/16'
-        # config.model.text.variant = 'mu'
-        # config.model.text.num_classes = 32
+        config.input.batch_size = 16
+        config.model.image.variant = 'mu/16'
+        config.model.text.variant = 'mu'
+        config.model.text.num_classes = 32
         config.wandb = False
 
     return config

@@ -113,10 +113,10 @@ def get_config(arg=None):
     add_eval(c, c.res, prefix='', batch_size=1024)
 
   if c.debug:
-    # c.input.shuffle_buffer_size = None
-    # c.input.batch_size = 32
-    # c.total_steps = 10
-    # c.log_training_steps = 1
+    c.input.shuffle_buffer_size = None
+    c.input.batch_size = 32
+    c.total_steps = 10
+    c.log_training_steps = 1
     c.evals = {}
 
   return c
