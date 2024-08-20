@@ -3,7 +3,7 @@ import big_vision.configs.common as bvcc
 from big_vision.configs.proj.image_text import common
 from big_vision.configs.proj.paligemma.transfers.common import combine_and_keep_train, combine_and_keep_eval, TOKENIZER
 
-def training_data(res, *, prefix, text_len=32):
+def training_data(res, *, prefix, text_len=64):
   """Creates training data config.
 
   You can add more arguments beside `res`, but give them good defaults.
@@ -29,7 +29,7 @@ def training_data(res, *, prefix, text_len=32):
   ])
   return c
 
-def add_eval(c, res, *, text_len=32, prefix, **kw):
+def add_eval(c, res, *, text_len=64, prefix, **kw):
   c.evals.retrieval_coco = common.get_coco(
     pred='contrastive_logits',
     pp_img=f'resize({res})|value_range(-1, 1)',
@@ -39,6 +39,17 @@ def add_eval(c, res, *, text_len=32, prefix, **kw):
       combine_and_keep_eval(text_len),
       f'copy(inkey="text", outkey="labels")',
     ]),
+    log_steps=1000,
+  )
+  c.evals.zeroshot_imagenet = common.get_disclf(
+    sz=res,
+    pp_txt='|'.join([
+      f'strfmt("{prefix}", outkey="prefix")',
+      'copy(inkey="texts", outkey="suffix")',
+      combine_and_keep_eval(text_len),
+      f'copy(inkey="text", outkey="labels")',
+    ]),
+    dataset_names=('imagenet2012','imagenet_v2','imagenet2012_real'),
     log_steps=1000,
   )
 
@@ -93,7 +104,7 @@ def get_config(arg=None):
   c.wandb = not c.debug
 
   # Evaluation section
-  if c.mode == 'contrastive' and c.debug:
+  if c.mode == 'contrastive':
     c.evals = {}
     add_eval(c, c.res, prefix='')
 
