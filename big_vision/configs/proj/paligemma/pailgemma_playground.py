@@ -42,6 +42,7 @@ def add_eval(c, res, *, text_len=64, prefix, **kw):
     log_steps=1000,
   )
   c.evals.zeroshot_imagenet = common.get_disclf(
+    pred='contrastive_logits',
     sz=res,
     pp_txt='|'.join([
       f'strfmt("{prefix}", outkey="prefix")',
