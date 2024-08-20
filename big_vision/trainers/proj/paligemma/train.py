@@ -68,6 +68,15 @@ jax.config.update("jax_transfer_guard", "disallow")
 NamedSharding = jax.sharding.NamedSharding
 P = jax.sharding.PartitionSpec
 
+def _new_get_flops(fn, *args, **kwargs):
+  e = jax.jit(fn).lower(*args, **kwargs)
+  cost = e.compile().cost_analysis()[0]
+  if cost is None:
+    return 0
+  flops = int(cost['flops']) if 'flops' in cost else 0
+  return flops
+
+nn.summary._get_flops = _new_get_flops
 
 def main(argv):
   del argv
@@ -231,6 +240,15 @@ def main(argv):
         rngs={"params": rng, "dropout": rng},
         mutable=["params"])
     return flax.core.unfreeze(variables["params"])
+    # # bs=1 for dummy forward pass.
+    # dummy_img = batch["image"][0:1]
+    # # dummy_img = jnp.ones([1, 224, 224, 3])
+    # dummy_txt = batch["text"][0:1,:-1]
+    # dummy_mask = batch["mask_ar"][0:1,:-1]
+    # tab = model.tabulate(jax.random.key(0),dummy_img,dummy_txt,dummy_mask,is_blind=config.get("mode")=="contrastive",depth=1,compute_flops=True)
+    # print(tab)
+    # exit()
+
 
   # This seed makes the Jax part of things (like model init) deterministic.
   # However, full training still won't be deterministic, for example due to the
