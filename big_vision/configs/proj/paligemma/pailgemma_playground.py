@@ -106,6 +106,7 @@ def get_config(arg=None):
   c.pp_modules = ['ops_general', 'ops_image', 'ops_text', 'proj.paligemma.ops']
   c.seed = 0
   c.wandb = not c.debug
+  c.wandb = False
 
   # Evaluation section
   if c.mode == 'contrastive':

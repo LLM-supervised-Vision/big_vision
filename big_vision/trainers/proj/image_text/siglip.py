@@ -300,7 +300,7 @@ def main(argv):
   parameter_overview.log_parameter_overview(
       train_state["params"], msg="Init params",
       include_stats="global", jax_logging_process=0)
-  exit()
+
 
 ################################################################################
 #                                                                              #
