@@ -56,6 +56,7 @@ class Model(nn.Module):
   dropout: float = 0.0
   dropout_bdims: tuple[int, ...] = ()  # Every float is dropped independently.
   cache_dtype: str | None = "bfloat16"  # bfloat16 to save memory and transfers.
+  dtype: str = "float32"
 
   def setup(self):
     # The parent+name avoids an unnecessary nesting in params pytree.

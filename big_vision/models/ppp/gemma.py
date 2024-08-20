@@ -140,10 +140,11 @@ def trunc_norm_init(in_axis, out_axis, batch_axis):
 class Einsum(nn.Module):
   shape: tuple[int, ...]
   w_init: nn.initializers.Initializer = nn.initializers.zeros_init()
+  dtype: str = "float32"
 
   @nn.compact
   def __call__(self, eqn, x):
-    w = self.param("w", self.w_init, self.shape)
+    w = self.param("w", self.w_init, self.shape, self.dtype)
     return jnp.einsum(eqn, x, w)
 
 
@@ -191,6 +192,7 @@ class Attention(nn.Module):
   head_dim: int
 
   cache_dtype: str | None = None
+  dtype: str = "float32"
 
   def setup(self):
     if self.num_kv_heads == self.num_heads:
@@ -198,21 +200,25 @@ class Attention(nn.Module):
           shape=(3, self.num_heads, self.features, self.head_dim),
           w_init=trunc_norm_init(
               in_axis=(2,), out_axis=(0, 1, 3), batch_axis=()),
+          dtype=self.dtype,
       )
     else:
       # MQA
       self.q_einsum = Einsum(
           shape=(self.num_heads, self.features, self.head_dim),
           w_init=trunc_norm_init(in_axis=(1,), out_axis=(0, 2), batch_axis=()),
+          dtype=self.dtype,
       )
       self.kv_einsum = Einsum(
           shape=(2, self.num_kv_heads, self.features, self.head_dim),
           w_init=trunc_norm_init(
               in_axis=(2,), out_axis=(0, 1, 3), batch_axis=()),
+          dtype=self.dtype,
       )
     self.attn_vec_einsum = Einsum(
         shape=(self.num_heads, self.head_dim, self.features),
         w_init=trunc_norm_init(in_axis=(0, 1), out_axis=(2,), batch_axis=()),
+        dtype=self.dtype,
     )
 
   @nn.compact
@@ -296,6 +302,7 @@ class Block(nn.Module):
   dropout: float = 0.0
   dropout_bdims: tuple[int, ...] = ()
   cache_dtype: str | None = None
+  dtype: str = "float32"
 
   def setup(self):
     self.pre_attention_norm = RMSNorm()
@@ -305,6 +312,7 @@ class Block(nn.Module):
         features=self.embed_dim,
         head_dim=self.head_dim,
         cache_dtype=self.cache_dtype,
+        dtype=self.dtype,
     )
     self.pre_ffw_norm = RMSNorm()
     self.mlp = FeedForward(features=self.embed_dim, hidden_dim=self.hidden_dim)
@@ -350,6 +358,7 @@ class Model(nn.Module):
   # TODO: Wire this in all places needed so that the model can be
   # run with different activation dtype. For now only float32 runs.
   embed_dtype: str = "float32"
+  dtype: str = "float32"
 
   scan: bool = False
   remat_policy: str = "none"
@@ -439,6 +448,7 @@ class Model(nn.Module):
         dropout=self.dropout,
         dropout_bdims=self.dropout_bdims,
         cache_dtype=self.cache_dtype,
+        dtype=self.dtype,
     )
     layers = self.scope.push("layers")
     if self.scan:
