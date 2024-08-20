@@ -199,7 +199,7 @@ def get_config(arg=None):
                 'coco_captions("captions")|choice(inkey="captions", outkey="text")|'
                 f'{tokenizer("text", "labels")}|keep("image", "labels")')
 
-        config.input.batch_size = 16
+        # config.input.batch_size = 16
         # config.model.image.variant = 'mu/16'
         # config.model.text.variant = 'mu'
         # config.model.text.num_classes = 32
