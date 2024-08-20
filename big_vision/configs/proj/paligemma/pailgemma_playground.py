@@ -35,8 +35,9 @@ def add_eval(c, res, *, text_len=32, prefix, **kw):
     pp_img=f'resize({res})|value_range(-1, 1)',
     pp_txt='|'.join([
       f'strfmt("{prefix}", outkey="prefix")',
-      'copy(inkey="texts", outkey="labels")',
+      'copy(inkey="texts", outkey="suffix")',
       combine_and_keep_eval(text_len),
+      f'copy(inkey="text", outkey="labels")',
     ]),
     log_steps=1000,
   )

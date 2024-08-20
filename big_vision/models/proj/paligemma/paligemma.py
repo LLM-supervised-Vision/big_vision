@@ -153,9 +153,8 @@ class Model(nn.Module):
       return zimg, out_img
     
     if image is None:
-      assert mask_ar is not None, "mask_ar should not be None if image is None."
       assert text is not None, "image should be None if text is None."
-      image = jnp.zeros((text.shape[0], 1, 1, 3), jnp.float32)
+      image = jnp.zeros((text.shape[0], 224, 224, 3), jnp.float32)
       is_blind = True
 
     # Embed the image and text.
