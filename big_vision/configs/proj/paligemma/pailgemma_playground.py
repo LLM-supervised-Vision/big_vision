@@ -106,7 +106,6 @@ def get_config(arg=None):
   c.pp_modules = ['ops_general', 'ops_image', 'ops_text', 'proj.paligemma.ops']
   c.seed = 0
   c.wandb = not c.debug
-  c.wandb = False
 
   # Evaluation section
   if c.mode == 'contrastive':
@@ -114,9 +113,10 @@ def get_config(arg=None):
     add_eval(c, c.res, prefix='', batch_size=1024)
 
   if c.debug:
-    c.input.shuffle_buffer_size = None
-    c.input.batch_size = 32
-    c.total_steps = 10
-    c.log_training_steps = 1
+    # c.input.shuffle_buffer_size = None
+    # c.input.batch_size = 32
+    # c.total_steps = 10
+    # c.log_training_steps = 1
+    c.evals = {}
 
   return c
