@@ -41,6 +41,8 @@ def add_eval(c, res, *, text_len=64, prefix, **kw):
     ]),
     log_steps=1000,
   )
+  c.evals.retrieval_coco.update(kw)
+
   c.evals.zeroshot_imagenet = common.get_disclf(
     pred='contrastive_logits',
     sz=res,
@@ -53,6 +55,7 @@ def add_eval(c, res, *, text_len=64, prefix, **kw):
     dataset_names=('imagenet2012','imagenet_v2','imagenet2012_real'),
     log_steps=1000,
   )
+  c.evals.zeroshot_imagenet.update(kw)
 
 def get_config(arg=None):
   c = bvcc.parse_arg(
@@ -107,7 +110,7 @@ def get_config(arg=None):
   # Evaluation section
   if c.mode == 'contrastive':
     c.evals = {}
-    add_eval(c, c.res, prefix='')
+    add_eval(c, c.res, prefix='', batch_size=1024)
 
   if c.debug:
     c.input.shuffle_buffer_size = None
