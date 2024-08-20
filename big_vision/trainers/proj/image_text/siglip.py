@@ -285,6 +285,15 @@ def main(argv):
 
   # Parameters and the optimizer are now global (distributed) jax arrays.
   params = jax.jit(init, out_shardings=train_state_sharding["params"])(rng_init)
+  def bytes_in_use_devices(): 
+    in_use = [device.memory_stats()['bytes_in_use'] for device in jax.devices()]
+    length = len(in_use)
+    mean = sum(in_use) / length
+    std = sum((x - mean) ** 2 for x in in_use) / length
+    if jax.process_index() == 0:
+      logging.info(f"Bytes in use: length={length}, mean={mean}, std={std}")
+  bytes_in_use_devices()
+  exit()
   opt = jax.jit(tx.init, out_shardings=train_state_sharding["opt"])(params)
 
   rng, rng_loop = jax.random.split(rng, 2)

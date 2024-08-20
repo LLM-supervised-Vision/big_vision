@@ -200,8 +200,9 @@ def get_config(arg=None):
                 f'{tokenizer("text", "labels")}|keep("image", "labels")')
 
         config.input.batch_size = 16
-        config.model.image.variant = 'mu/16'
-        config.model.text.variant = 'mu'
+        # config.model.image.variant = 'mu/16'
+        # config.model.text.variant = 'mu'
+        # config.model.text.num_classes = 32
         config.wandb = False
 
     return config
