@@ -163,8 +163,7 @@ class Model(nn.Module):
       out[f"llm/{k}"] = v
 
     # Extract the logits for the text tokens.
-    zimg = out["img/zimg"]
-    text_pre_logits = out["llm/pre_logits"][:, zimg.shape[1]:, :]
+    text_pre_logits = out["llm/pre_logits"][:, out["img/zimg"].shape[1]:, :] if "img/zimg" in out else out["llm/pre_logits"]
     text_logits = self._llm.compute_logits(text_pre_logits, train=train)
     out["text_logits"] = text_logits
     out["text_tokens"] = jnp.argmax(text_logits, axis=-1)
