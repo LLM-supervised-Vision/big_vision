@@ -149,10 +149,11 @@ class Einsum(nn.Module):
 
 
 class RMSNorm(nn.Module):
+  dtype: str = "float32"
 
   @nn.compact
   def __call__(self, x):
-    scale = self.param("scale", nn.initializers.zeros_init(), (x.shape[-1]))
+    scale = self.param("scale", nn.initializers.zeros_init(), (x.shape[-1]), self.dtype)
     var = jnp.mean(jnp.square(x), axis=-1, keepdims=True)
     normed_inputs = jnp.asarray(x * jnp.reciprocal(jnp.sqrt(var + 1e-06)))
     normed_inputs = normed_inputs * (1 + scale)
@@ -164,6 +165,7 @@ class Embedder(nn.Module):
 
   vocab_size: int
   embed_dim: int
+  dtype: str = "float32"
 
   def setup(self):
     self.input_embedding_table = self.param(
@@ -172,6 +174,7 @@ class Embedder(nn.Module):
             scale=1.0, mode="fan_in", distribution="normal",
             in_axis=1, out_axis=0,),
         (self.vocab_size, self.embed_dim),
+        dtype=self.dtype,
     )
 
   def encode(self, x):
@@ -266,6 +269,7 @@ class FeedForward(nn.Module):
 
   features: int
   hidden_dim: int
+  dtype: str = "float32"
 
   @nn.compact
   def __call__(self, x):
@@ -273,6 +277,7 @@ class FeedForward(nn.Module):
         "gating_einsum",
         trunc_norm_init(in_axis=(1,), out_axis=(0, 2), batch_axis=()),
         ((2, self.features, self.hidden_dim)),
+        dtype=self.dtype,
     )
     ff_gate = jnp.dot(x, w_gating[0])
     gate_value = nn.gelu(ff_gate)
@@ -284,6 +289,7 @@ class FeedForward(nn.Module):
         "linear",
         trunc_norm_init(in_axis=(0,), out_axis=(1,), batch_axis=()),
         (self.hidden_dim, self.features),
+        dtype=self.dtype,
     )
     outputs = jnp.dot(activations, w_linear)
 
@@ -305,7 +311,7 @@ class Block(nn.Module):
   dtype: str = "float32"
 
   def setup(self):
-    self.pre_attention_norm = RMSNorm()
+    self.pre_attention_norm = RMSNorm(dtype=self.dtype)
     self.attn = Attention(
         num_heads=self.num_heads,
         num_kv_heads=self.num_kv_heads,
@@ -314,8 +320,8 @@ class Block(nn.Module):
         cache_dtype=self.cache_dtype,
         dtype=self.dtype,
     )
-    self.pre_ffw_norm = RMSNorm()
-    self.mlp = FeedForward(features=self.embed_dim, hidden_dim=self.hidden_dim)
+    self.pre_ffw_norm = RMSNorm(dtype=self.dtype)
+    self.mlp = FeedForward(features=self.embed_dim, hidden_dim=self.hidden_dim, dtype=self.dtype)
     if self.dropout:
       self.drop = nn.Dropout(self.dropout, self.dropout_bdims)
     else:
@@ -478,7 +484,7 @@ class Model(nn.Module):
     assert x.dtype == jnp.dtype(self.embed_dtype)  # Sanity check.
     out["encoded"] = x
 
-    x = RMSNorm(name="final_norm")(x)
+    x = RMSNorm(name="final_norm",dtype=self.dtype)(x)
     out["pre_logits"] = x
 
     x = embedder.decode(x)
