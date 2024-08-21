@@ -61,7 +61,7 @@ def get_config(arg=None):
   c = bvcc.parse_arg(
       arg, res=224,
       mode='generative', freeze_vit=False, freeze_llm=True,
-      batch_size=8192, total_samples=3.0, debug=False,
+      batch_size=8192, total_samples=3.0, debug=False, dtype='float32'
   )
   c.name = 'what the hell is this???'
 
@@ -96,7 +96,7 @@ def get_config(arg=None):
   c.model_name = 'proj.paligemma.paligemma'
   c.model = {}
   c.model.img = dict(variant='B/16', pool_type='none', head_zeroinit=False, scan=True, dtype_mm='bfloat16')
-  c.model.llm = dict(vocab_size=256_000 + 1024 + 128, dropout=0.0, scan=True, dtype='bfloat16')
+  c.model.llm = dict(vocab_size=256_000 + 1024 + 128, dropout=0.0, scan=True, dtype=c.dtype)
   # c.model_init = f'pt_{c.res}'
   c.model_init = {'img': None, 'llm': '/home/austinwang/gemma2b.npz'}
 
