@@ -57,10 +57,12 @@ def add_eval(c, res, *, text_len=64, prefix, **kw):
   )
   c.evals.zeroshot_imagenet.update(kw)
 
+
+
 def get_config(arg=None):
   c = bvcc.parse_arg(
       arg, res=224,
-      mode='generative', freeze_vit=False, freeze_llm=True,
+      mode='generative', freeze_vit=False, freeze_llm=True, half_llm=False,
       batch_size=8192, total_samples=3.0, debug=False, dtype='float32'
   )
   c.name = 'what the hell is this???'
@@ -99,6 +101,12 @@ def get_config(arg=None):
   c.model.llm = dict(vocab_size=256_000 + 1024 + 128, dropout=0.0, scan=True, dtype=c.dtype)
   # c.model_init = f'pt_{c.res}'
   c.model_init = {'img': None, 'llm': '/home/austinwang/gemma2b.npz'}
+  if c.half_llm:
+    c.model.llm['variant'] = 'gemma_2b_half'
+    c.model_init['llm'] = '/home/austinwang/gemma2b_half.npz'
+    dont_load = ['final_norm/scale']
+    c.model_load = {'llm_load_kw': {'dont_load': dont_load}}
+
 
   # FSDP strategy.
   c.mesh = [('data', -1)]
