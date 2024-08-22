@@ -108,7 +108,7 @@ def get_config(arg=None):
     c.model_load = {'llm_load_kw': {'dont_load': dont_load}}
 
   if c.pretrained_llm==False:
-    c.model_init['llm'] = None
+    c.model_init = None
     c.model_load = {}
 
   # FSDP strategy.
