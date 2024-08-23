@@ -1,3 +1,5 @@
+import os
+import logging
 from ml_collections import ConfigDict
 import big_vision.configs.common as bvcc
 from big_vision.configs.proj.image_text import common
@@ -102,22 +104,32 @@ def get_config(arg=None):
   # c.model_init = f'pt_{c.res}'
 
   dont_load = ['final_norm/scale']
+  llm_ckpt = None
   match c.llm_ckpt:
     case 'full':
-      c.model_init = {'img': None, 'llm': '/home/austinwang/gemma2b.npz'}
+      llm_ckpt = '/home/austinwang/gemma2b.npz'
     case 'half':
       c.model.llm['variant'] = 'gemma_2b_half'
-      c.model_init = {'img': None, 'llm': '/home/austinwang/gemma2b_half.npz'}
+      llm_ckpt = '/home/austinwang/gemma2b_half.npz'
       c.model_load = {'llm_load_kw': {'dont_load': dont_load}}
     case '6lyr':
       c.model.llm['variant'] = 'gemma_6lyr'
-      c.model_init = {'img': None, 'llm': '/home/austinwang/gemma2b_first_6.npz'}
+      llm_ckpt = '/home/austinwang/gemma2b_first_6.npz'
       c.model_load = {'llm_load_kw': {'dont_load': dont_load}}
     case 'scratch':
       c.model_init = None
       c.model_load = {}
     case _:
       raise ValueError(f"Unknown llm_ckpt: {c.llm_ckpt}")
+  
+  if llm_ckpt is not None: 
+    c.model_init = {'img': None, 'llm': llm_ckpt}
+    # check whether llm_ckpt exists or not, if not then download it from gcs directory
+    if not os.path.exists(llm_ckpt):
+      gcs_dir = 'gs://us-central2-storage/tensorflow_datasets/'
+      gcs_path = gcs_dir + llm_ckpt.split('/')[-1]
+      logging.info(f"Downloading {gcs_path} to {llm_ckpt}")
+      os.system(f'gsutil cp {gcs_path} {llm_ckpt}')
 
   # FSDP strategy.
   c.mesh = [('data', -1)]
