@@ -124,8 +124,12 @@ class Model(nn.Module):
       mask_ar = jnp.full(text.shape, 1)
 
     # Concatenate embeded image and text into a single token sequence.
-    x = jnp.concatenate([zimg, ztxt], axis=1) if zimg is not None else ztxt
-    _, img_len, _ = zimg.shape if zimg is not None else (None, 0, None)
+    if zimg is not None and not is_blind:
+      x = jnp.concatenate([zimg, ztxt], axis=1)
+      _, img_len, _ = zimg.shape
+    else:
+      x = ztxt
+      img_len = 0
     pad_width = ((0, 0), (img_len, 0))
     mask_ar = jnp.pad(mask_ar, pad_width, constant_values=0)
     input_mask = jnp.pad(input_mask, pad_width, constant_values=not is_blind)

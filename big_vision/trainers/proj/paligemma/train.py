@@ -399,7 +399,8 @@ def main(argv):
           # ztxt = (out['llm/pre_logits'] * eos_mask[:,:,None]).sum(axis=1) # use pre-logits of eos token as ztxt
 
           # gap
-          ztxt = out['llm/pre_logits'][:,out['img/zimg'].shape[1]:,:].mean(axis=1)
+          # ztxt = out['llm/pre_logits'][:,out['img/zimg'].shape[1]:,:].mean(axis=1)
+          ztxt = out['llm/pre_logits'].mean(axis=1)
 
           # first
           # ztxt = out['llm/pre_logits'][:,out['img/zimg'].shape[1],:]
