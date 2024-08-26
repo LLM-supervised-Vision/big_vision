@@ -39,6 +39,7 @@ def get_all(model):
       "decode_with_logp": _decode_with_logp,
       "beam_decode": _beam_decode,
       "contrastive_logits": _contrastive_logits,
+      "score": _score,
   }
   return {name: functools.partial(fn, model=model) for name, fn in fns.items()}
 
