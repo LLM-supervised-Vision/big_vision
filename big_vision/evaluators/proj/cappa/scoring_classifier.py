@@ -25,6 +25,8 @@ from big_vision.pp import builder as pp_builder
 import jax.numpy as jnp
 import numpy as np
 
+import tensorflow as tf
+
 # Temporary global flag to facilitate backwards compatability. Will be removed
 # by the end of year 2023.
 API = "jit"
@@ -40,14 +42,23 @@ CLASS_NAMES = {
 def get_classes(dataset_name, pp_txt):
   """Load the class label strings and tokenize them using pp_txt."""
   pp_fn = pp_builder.get_preprocess_fn(pp_txt, log_data=False)
-  return np.array([pp_fn({"label": name})["labels"]
-                   for name in CLASS_NAMES[dataset_name]])
+  cls_tokens = {"_label_tokens": [], "mask_ar": []}
+  for name in CLASS_NAMES[dataset_name]:
+    out = pp_fn({"label": tf.constant(name)})
+    cls_tokens["_label_tokens"].append(out["labels"])
+    cls_tokens["mask_ar"].append(out["mask_ar"])
+  cls_tokens["_label_tokens"] = np.array(cls_tokens["_label_tokens"])
+  cls_tokens["mask_ar"] = np.array(cls_tokens["mask_ar"])
+  return cls_tokens
+  # return np.array([pp_fn({"label": name})["labels"]
+  #                  for name in CLASS_NAMES[dataset_name]])
 
 
 def scoring(predict_fn, tokenized_labels):
 
   def _scoring_fn(train_state, batch, *a, **kw):
-    batch = {"_label_tokens": tokenized_labels, **batch}
+    # batch = {"_label_tokens": tokenized_labels, **batch}
+    batch = {**tokenized_labels, **batch}
     scores = predict_fn(train_state, batch, *a, **kw)
     predictions = jnp.argmax(scores, axis=-1)
     return {"prec@1": predictions == batch["label"]}

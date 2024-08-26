@@ -31,33 +31,52 @@ def training_data(res, *, prefix, text_len=64):
   ])
   return c
 
-def add_eval(c, res, *, text_len=64, prefix, **kw):
-  c.evals.retrieval_coco = common.get_coco(
-    pred='contrastive_logits',
-    pp_img=f'resize({res})|value_range(-1, 1)',
-    pp_txt='|'.join([
-      f'strfmt("{prefix}", outkey="prefix")',
-      'copy(inkey="texts", outkey="suffix")',
-      combine_and_keep_eval(text_len),
-      f'copy(inkey="text", outkey="labels")',
-    ]),
-    log_steps=1000,
-  )
-  c.evals.retrieval_coco.update(kw)
+def add_eval(c, res, *, text_len=64, prefix, mode, **kw):
+  if mode == "contrastive":
+    c.evals.retrieval_coco = common.get_coco(
+      pred='contrastive_logits',
+      pp_img=f'resize({res})|value_range(-1, 1)',
+      pp_txt='|'.join([
+        f'strfmt("{prefix}", outkey="prefix")',
+        'copy(inkey="texts", outkey="suffix")',
+        combine_and_keep_eval(text_len),
+        f'copy(inkey="text", outkey="labels")',
+      ]),
+      log_steps=1000,
+    )
+    c.evals.retrieval_coco.update(kw)
 
-  c.evals.zeroshot_imagenet = common.get_disclf(
-    pred='contrastive_logits',
-    sz=res,
-    pp_txt='|'.join([
-      f'strfmt("{prefix}", outkey="prefix")',
-      'copy(inkey="texts", outkey="suffix")',
-      combine_and_keep_eval(text_len),
-      f'copy(inkey="text", outkey="labels")',
-    ]),
-    dataset_names=('imagenet2012','imagenet_v2','imagenet2012_real'),
-    log_steps=1000,
-  )
-  c.evals.zeroshot_imagenet.update(kw)
+    c.evals.zeroshot_imagenet = common.get_disclf(
+      pred='contrastive_logits',
+      sz=res,
+      pp_txt='|'.join([
+        f'strfmt("{prefix}", outkey="prefix")',
+        'copy(inkey="texts", outkey="suffix")',
+        combine_and_keep_eval(text_len),
+        f'copy(inkey="text", outkey="labels")',
+      ]),
+      dataset_names=('imagenet2012','imagenet_v2','imagenet2012_real'),
+      log_steps=1000,
+    )
+    c.evals.zeroshot_imagenet.update(kw)
+
+  elif mode == "generative":
+    pp = '|'.join([
+        f'strfmt("{prefix}", outkey="prefix")',
+        'copy(inkey="label", outkey="suffix")',
+        combine_and_keep_eval(text_len, keep=('text', 'mask_ar')),
+        f'copy(inkey="text", outkey="labels")',
+    ])
+    c.evals['imagenet/scoring'] = dict(
+      type='proj.cappa.scoring_classifier',
+      pred='score',
+      log_percent=0.1,
+      data=dict(name='imagenet2012', split='validation'),
+      pp_fn=f'decode|resize({res})|keep("image", "label")',
+      pp_txt=pp,
+    )
+  else:
+    raise ValueError(f"Unknown mode: {mode}")
 
 
 
@@ -145,9 +164,8 @@ def get_config(arg=None):
   c.wandb = not c.debug
 
   # Evaluation section
-  if c.mode == 'contrastive':
-    c.evals = {}
-    add_eval(c, c.res, prefix='', batch_size=1024)
+  c.evals = {}
+  add_eval(c, c.res, prefix='', batch_size=1024, mode=c.mode)
 
   if c.debug:
     c.input.shuffle_buffer_size = None

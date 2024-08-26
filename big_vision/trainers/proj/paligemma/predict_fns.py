@@ -43,6 +43,45 @@ def get_all(model):
   return {name: functools.partial(fn, model=model) for name, fn in fns.items()}
 
 
+def _score(train_state, batch, *, model):
+  # import pdb; pdb.set_trace()
+  encoded, _ = model.apply(
+      {"params": train_state["params"]},
+      batch["image"],
+      train=False,
+      method=model.embed_image,
+  )
+  # This needs to be added by the evaluator. It is the pre-computed tokenized
+  # list of all available labels. For ImageNet-1k, that's (1000, 13).
+  all_labels, mask_ar = batch["_label_tokens"], batch["mask_ar"]
+
+  def score_label(batch):
+    """Score (LogLik) each minibatch example (image) with a single `label`."""
+    label_rep = jnp.tile(batch["label"], (encoded.shape[0], 1))
+    mask_ar_rep = jnp.tile(batch["mask_ar"], (encoded.shape[0], 1))
+    logits, _ = model.apply(
+        {"params": train_state["params"]},
+        None,
+        label_rep[:, :-1],
+        mask_ar_rep[:, :-1],
+        encoded=encoded,
+        train=False,
+    )
+    # The returned value is (batch,) scalars, the score each image has with
+    # this label. We turn the softmax_xent's NLL into LL so higher = better.
+    return -u.weighted_softmax_xent(
+        logits=logits,
+        labels=label_rep[:, 1:],
+        weights=(label_rep[:, 1:] > 0).astype(jnp.float32),  # Ignore <PAD> (=0).
+        reduction=False,
+        normalize=False,
+    )
+
+  # Use lax.map() instead of vmap() to conserve memory.
+  nlls = jax.lax.map(score_label, {"label":all_labels, "mask_ar":mask_ar})  # -> (nlabel, batch)
+  return nlls.T  # -> (batch, nlabel) array of scores.
+
+
 def _logits(train_state, batch, *, model):
   images, text, mask = batch["image"], batch["text"], batch["mask_ar"]
   text_logits, out = model.apply(

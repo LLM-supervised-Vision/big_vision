@@ -97,7 +97,7 @@ class Model(nn.Module):
     return ztxt, out
 
   def embed_image_and_text(self, image, text, *,
-                           input_mask=None, mask_ar=None, is_blind=False, train=False):
+                           encoded=None, input_mask=None, mask_ar=None, is_blind=False, train=False):
     """Concats image/text into a sequence of embeded tokens to pass to `llm`.
 
     Args:
@@ -115,7 +115,11 @@ class Model(nn.Module):
       Tuple (x: float[B, N, E], input_mask: bool[B, N], mask_ar: int[B, N]) and
       auxiliary outputs.
     """
-    zimg, out_img = self.embed_image(image, train=train) if image is not None else (None, {})
+    if encoded is not None:
+      assert image is None, "encoded should be None if image is not None."
+      zimg, out_img = encoded, {"img/zimg": encoded}
+    else:
+      zimg, out_img = self.embed_image(image, train=train) if image is not None else (None, {})
     ztxt, out_txt = self.embed_text(text, train=train)
 
     if input_mask is None:
@@ -136,7 +140,7 @@ class Model(nn.Module):
 
     return (x, input_mask, mask_ar), {**out_img, **out_txt}
 
-  def __call__(self, image, text, mask_ar, is_blind=False, train=False):
+  def __call__(self, image, text, mask_ar, encoded=None, is_blind=False, train=False):
     """Concats image/text and returns text logits.
 
     Args:
@@ -158,7 +162,7 @@ class Model(nn.Module):
     
     # Embed the image and text.
     (x, input_mask, mask_ar), out = self.embed_image_and_text(
-        image, text, mask_ar=mask_ar, is_blind=is_blind, train=train)
+        image, text, mask_ar=mask_ar, encoded=encoded, is_blind=is_blind, train=train)
 
     # Call transformer on the embedded token sequence.
     attn_mask = out["attn_mask"] = make_attn_mask(input_mask, mask_ar)
