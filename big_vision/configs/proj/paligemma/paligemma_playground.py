@@ -83,8 +83,10 @@ def add_eval(c, res, *, text_len=64, prefix, mode, **kw):
 def get_config(arg=None):
   c = bvcc.parse_arg(
       arg, res=224,
-      mode='generative', freeze_vit=False, freeze_llm=True, llm_ckpt="full", llm_pool='none',
-      batch_size=8192, total_samples=3.0, debug=False, dtype='float32'
+      mode='generative', freeze_vit=False, 
+      freeze_llm=True, llm_ckpt="full", llm_pool='none',
+      batch_size=8192, total_samples=3.0, dtype='float32',
+      debug=False, 
   )
   c.name = 'what the hell is this???'
 
@@ -138,6 +140,12 @@ def get_config(arg=None):
     case 'partial_frozen':
       llm_ckpt = '/home/austinwang/gemma2b.npz'
       c.model.llm['lyrs_frozen'] = 9
+      assert c.freeze_llm==False, "partial_frozen is for unfreezing"
+      c.schedule = [
+        ('img/.*', None if c.freeze_vit else sched),
+        ('llm/layers/frozen/.*', None),
+        ('.*', sched),
+      ]
     case 'scratch':
       c.model_init = None
       c.model_load = {}
