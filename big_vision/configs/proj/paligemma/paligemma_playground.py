@@ -83,7 +83,7 @@ def add_eval(c, res, *, text_len=64, prefix, mode, **kw):
 def get_config(arg=None):
   c = bvcc.parse_arg(
       arg, res=224,
-      mode='generative', freeze_vit=False, freeze_llm=True, llm_ckpt="full", llm_pool='map',
+      mode='generative', freeze_vit=False, freeze_llm=True, llm_ckpt="full", llm_pool='none',
       batch_size=8192, total_samples=3.0, debug=False, dtype='float32'
   )
   c.name = 'what the hell is this???'
