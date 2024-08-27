@@ -134,6 +134,9 @@ def get_config(arg=None):
       c.model.llm['variant'] = 'gemma_6lyr'
       llm_ckpt = '/home/austinwang/gemma2b_first_6.npz'
       c.model_load = {'llm_load_kw': {'dont_load': dont_load}}
+    case 'partial_frozen':
+      llm_ckpt = '/home/austinwang/gemma2b.npz'
+      c.model.llm['lyrs_frozen'] = 9
     case 'scratch':
       c.model_init = None
       c.model_load = {}
