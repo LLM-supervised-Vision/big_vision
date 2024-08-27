@@ -31,6 +31,7 @@ def _get_config(model):
   config.cache_dtype = model.cache_dtype
   config.dtype = model.dtype
   config.lyrs_frozen = model.lyrs_frozen
+  config.pool = model.pool
   return config
 
 
@@ -60,6 +61,7 @@ class Model(nn.Module):
   cache_dtype: str | None = "bfloat16"  # bfloat16 to save memory and transfers.
   dtype: str = "float32"
   lyrs_frozen: int = -1
+  pool: str = "none"
 
   def setup(self):
     # The parent+name avoids an unnecessary nesting in params pytree.

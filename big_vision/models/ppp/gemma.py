@@ -42,6 +42,7 @@ import jax.numpy as jnp
 import ml_collections
 import numpy as np
 import orbax.checkpoint
+from big_vision.models.vit import MAPHead
 
 
 def get_config(variant):
@@ -400,7 +401,9 @@ class Model(nn.Module):
 
   scan: bool = False
   remat_policy: str = "none"
+  
   lyrs_frozen: int = -1
+  pool: str = "none"
 
   @nn.compact
   def __call__(
@@ -540,6 +543,23 @@ class Model(nn.Module):
 
     x = RMSNorm(name="final_norm",dtype=self.dtype)(x)
     out["pre_logits"] = x
+
+    if self.pool == "map":
+      out["head_input"] = MAPHead(
+          num_heads=self.num_heads, mlp_dim=self.mlp_dim, dtype_mm=self.dtype)(x)
+    elif self.pool == "gap":
+      out["head_input"] = jnp.mean(x, axis=1)
+    elif self.pool == "0":
+      out["head_input"] = x[:, 0]
+    elif self.pool == "tok":
+      out["head_input"] = x[:, 0]
+      encoded = encoded[:, 1:]
+    elif self.pool == "argmax":
+      out["head_input"] = jnp.argmax(x, axis=1)
+    elif self.pool == "none":
+      pass
+    else:
+      raise ValueError(f"Unknown pool type: '{self.contrastive_pool_type}'")
 
     x = embedder.decode(x)
     out["logits"] = x
