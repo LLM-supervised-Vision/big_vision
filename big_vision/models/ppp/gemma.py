@@ -400,6 +400,7 @@ class Model(nn.Module):
 
   scan: bool = False
   remat_policy: str = "none"
+  lyrs_frozen: int = -1
 
   @nn.compact
   def __call__(
@@ -490,16 +491,37 @@ class Model(nn.Module):
     )
     layers = self.scope.push("layers")
     if self.scan:
-      blocks = [nn.scan(
-          block_cls,
-          # cache has axis 1 since we want leading dimension to be batch size.
-          variable_axes={"params": 0, "cache": 1},
-          split_rngs={"params": True, "dropout": True},
-          in_axes=nn.broadcast,
-          length=self.depth,
-      )(
-          parent=layers, **block_kw
-      )]
+      if self.lyrs_frozen < 0:
+        blocks = [nn.scan(
+            block_cls,
+            # cache has axis 1 since we want leading dimension to be batch size.
+            variable_axes={"params": 0, "cache": 1},
+            split_rngs={"params": True, "dropout": True},
+            in_axes=nn.broadcast,
+            length=self.depth,
+        )(
+            parent=layers, **block_kw
+        )]
+      else:
+        frozen_blocks = [nn.scan(
+            block_cls,
+            variable_axes={"params": 0, "cache": 1},
+            split_rngs={"params": True, "dropout": True},
+            in_axes=nn.broadcast,
+            length=self.lyrs_frozen,
+        )(
+            parent=layers.push("frozen"), **block_kw
+        )]
+        trainable_blocks = [nn.scan(
+            block_cls,
+            variable_axes={"params": 0, "cache": 1},
+            split_rngs={"params": True, "dropout": True},
+            in_axes=nn.broadcast,
+            length=self.depth - self.lyrs_frozen,
+        )(
+            parent=layers.push("trainable"), **block_kw
+        )]
+        blocks = frozen_blocks + trainable_blocks
     else:
       blocks = [
           block_cls(
@@ -577,5 +599,15 @@ def load(init_params, init_file, model_cfg=None, dont_load=()):
         params["embedder"]["input_embedding"],
         model_cfg["vocab_size"],
     )
+
+    if 'layers' in params and 'frozen' in init_params['layers']:
+      num_frozen_layers = init_params['layers']['frozen']['attn']['attn_vec_einsum']['w'].shape[0]
+      import pdb; pdb.set_trace()
+      # params['layers']['frozen'] = jax.tree_map(lambda x: x[:num_frozen_layers], params['layers'])
+      # params['layers']['trainable'] = jax.tree_map(lambda x: x[num_frozen_layers:], params['layers'])
+      params['layers'] = {
+        'frozen': jax.tree_map(lambda x: x[:num_frozen_layers], params['layers']),
+        'trainable': jax.tree_map(lambda x: x[num_frozen_layers:], params['layers'])
+      }
 
   return common.merge_params(params, init_params, dont_load)

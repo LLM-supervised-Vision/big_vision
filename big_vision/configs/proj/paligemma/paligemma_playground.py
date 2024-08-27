@@ -119,8 +119,7 @@ def get_config(arg=None):
   c.model_name = 'proj.paligemma.paligemma'
   c.model = {}
   c.model.img = dict(variant='B/16', pool_type='none', head_zeroinit=False, scan=True, dtype_mm=c.dtype)
-  c.model.llm = dict(vocab_size=256_000 + 1024 + 128, dropout=0.0, scan=True, dtype=c.dtype)
-  # c.model_init = f'pt_{c.res}'
+  c.model.llm = dict(vocab_size=256_000 + 1024 + 128, dropout=0.0, scan=True, dtype=c.dtype, lyrs_frozen=9)
 
   dont_load = ['final_norm/scale']
   llm_ckpt = None
@@ -149,6 +148,11 @@ def get_config(arg=None):
       gcs_path = gcs_dir + llm_ckpt.split('/')[-1]
       logging.info(f"Downloading {gcs_path} to {llm_ckpt}")
       os.system(f'gsutil cp {gcs_path} {llm_ckpt}')
+
+  # c.model_init = '/mnt/vlm-pd/ckpts/paligemma/paligemma-3b-pt-224.bf16.npz'
+  # /mnt/vlm-pd/ckpts/paligemma/paligemma-3b-pt-224.bf16.npz
+  # /mnt/vlm-pd/ckpts/paligemma/paligemma-3b-pt-224.f16.npz
+  # /mnt/vlm-pd/ckpts/paligemma/paligemma-3b-pt-224.npz
 
   # FSDP strategy.
   c.mesh = [('data', -1)]

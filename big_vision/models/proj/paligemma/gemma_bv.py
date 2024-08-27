@@ -29,6 +29,8 @@ def _get_config(model):
   config.dropout = model.dropout
   config.dropout_bdims = model.dropout_bdims
   config.cache_dtype = model.cache_dtype
+  config.dtype = model.dtype
+  config.lyrs_frozen = model.lyrs_frozen
   return config
 
 
@@ -57,6 +59,7 @@ class Model(nn.Module):
   dropout_bdims: tuple[int, ...] = ()  # Every float is dropped independently.
   cache_dtype: str | None = "bfloat16"  # bfloat16 to save memory and transfers.
   dtype: str = "float32"
+  lyrs_frozen: int = -1
 
   def setup(self):
     # The parent+name avoids an unnecessary nesting in params pytree.
