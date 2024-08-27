@@ -602,7 +602,6 @@ def load(init_params, init_file, model_cfg=None, dont_load=()):
 
     if 'layers' in params and 'frozen' in init_params['layers']:
       num_frozen_layers = init_params['layers']['frozen']['attn']['attn_vec_einsum']['w'].shape[0]
-      import pdb; pdb.set_trace()
       # params['layers']['frozen'] = jax.tree_map(lambda x: x[:num_frozen_layers], params['layers'])
       # params['layers']['trainable'] = jax.tree_map(lambda x: x[num_frozen_layers:], params['layers'])
       params['layers'] = {
