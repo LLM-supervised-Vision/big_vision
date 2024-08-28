@@ -123,12 +123,12 @@ def get_config(arg=None):
   c.model.img = dict(variant='B/16', pool_type='none', head_zeroinit=False, scan=True, dtype_mm=c.dtype)
   c.model.llm = dict(vocab_size=256_000 + 1024 + 128, dropout=0.0, scan=True, dtype=c.dtype, lyrs_frozen=-1, pool=c.llm_pool)
 
-  llm_ckpt = None
+  llm_ckpt = '/home/austinwang/gemma2b.npz'
   dont_load = ['MAPHead.*'] if c.model.llm['pool'] == 'map' else []
   c.model_load = {'img_load_kw': {}, 'llm_load_kw': {'dont_load': dont_load}}
   match c.llm_ckpt:
     case 'full':
-      llm_ckpt = '/home/austinwang/gemma2b.npz'
+      pass
     case 'half':
       c.model.llm['variant'] = 'gemma_2b_half'
       llm_ckpt = '/home/austinwang/gemma2b_half.npz'
@@ -138,7 +138,6 @@ def get_config(arg=None):
       llm_ckpt = '/home/austinwang/gemma2b_first_6.npz'
       c.model_load['llm_load_kw']['dont_load'] += ['final_norm/scale']
     case 'partial_frozen':
-      llm_ckpt = '/home/austinwang/gemma2b.npz'
       c.model.llm['lyrs_frozen'] = 9
       assert c.freeze_llm==False, "partial_frozen is for unfreezing"
       c.schedule = [
@@ -146,7 +145,16 @@ def get_config(arg=None):
         ('llm/layers/frozen/.*', None),
         ('.*', sched),
       ]
+    case 'ln':
+      # unfreeze the layer norm only for llm
+      assert c.freeze_llm==False, "ln is for unfreezing"
+      c.schedule = [
+        ('img/.*', None if c.freeze_vit else sched),
+        ('.*norm/.*', sched),
+        ('.*', None),
+      ]
     case 'scratch':
+      llm_ckpt = None
       c.model_init = None
       c.model_load = {}
     case _:
