@@ -153,11 +153,6 @@ def get_config(arg=None):
         ('.*norm/.*', sched),
         ('.*', None),
       ]
-      # c.wd_mults = [
-      #   ('llm/.*', 1.0),
-      #   ('.*', 1e-2),
-      # ]
-      c.wd = 0.0
     case 'scratch':
       llm_ckpt = None
       c.model_init = None
