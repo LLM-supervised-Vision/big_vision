@@ -154,8 +154,8 @@ def get_config(arg=None):
         ('.*', None),
       ]
       c.wd_mults = [
-        ('llm/.*', 1e-2),
-        ('.*', 1.0),
+        ('llm/.*', 1.0),
+        ('.*', 1e-2),
       ]
     case 'scratch':
       llm_ckpt = None
