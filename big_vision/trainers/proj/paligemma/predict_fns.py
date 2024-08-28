@@ -107,7 +107,7 @@ def _contrastive_logits(train_state, batch, *, model):
     zimg = zimg / (zimg_norm + 1e-8)
 
   if 'llm/pre_logits' in out:
-    ztxt = out['llm/pre_logits'].mean(axis=1)
+    ztxt = out['llm/head_input']
     ztxt_norm = jnp.linalg.norm(ztxt, axis=-1, keepdims=True) 
     ztxt = ztxt / (ztxt_norm + 1e-8)
 
