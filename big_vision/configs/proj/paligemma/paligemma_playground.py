@@ -60,7 +60,8 @@ def add_eval(c, res, *, text_len=64, prefix, mode, **kw):
     )
     c.evals.zeroshot_imagenet.update(kw)
 
-  # elif mode == "generative":
+  elif mode == "generative":
+    c.evals = {}
   #   pp = '|'.join([
   #       f'strfmt("{prefix}", outkey="prefix")',
   #       'copy(inkey="label", outkey="suffix")',
