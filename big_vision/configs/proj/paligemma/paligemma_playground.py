@@ -60,21 +60,21 @@ def add_eval(c, res, *, text_len=64, prefix, mode, **kw):
     )
     c.evals.zeroshot_imagenet.update(kw)
 
-  elif mode == "generative":
-    pp = '|'.join([
-        f'strfmt("{prefix}", outkey="prefix")',
-        'copy(inkey="label", outkey="suffix")',
-        combine_and_keep_eval(text_len, keep=('text', 'mask_ar')),
-        f'copy(inkey="text", outkey="labels")',
-    ])
-    c.evals['imagenet/scoring'] = dict(
-      type='proj.cappa.scoring_classifier',
-      pred='score',
-      log_percent=0.1,
-      data=dict(name='imagenet2012', split='validation'),
-      pp_fn=f'decode|resize({res})|keep("image", "label")',
-      pp_txt=pp,
-    )
+  # elif mode == "generative":
+  #   pp = '|'.join([
+  #       f'strfmt("{prefix}", outkey="prefix")',
+  #       'copy(inkey="label", outkey="suffix")',
+  #       combine_and_keep_eval(text_len, keep=('text', 'mask_ar')),
+  #       f'copy(inkey="text", outkey="labels")',
+  #   ])
+  #   c.evals['imagenet/scoring'] = dict(
+  #     type='proj.cappa.scoring_classifier',
+  #     pred='score',
+  #     log_percent=0.1,
+  #     data=dict(name='imagenet2012', split='validation'),
+  #     pp_fn=f'decode|resize({res})|keep("image", "label")',
+  #     pp_txt=pp,
+  #   )
   else:
     raise ValueError(f"Unknown mode: {mode}")
 
