@@ -147,6 +147,7 @@ def get_config(arg=None):
 
     if arg.scale == 'gemma':
         config.model.text.variant = None
+        config.input.shuffle_buffer_size = 50_000
         config.model.text.width = 2048
         config.model.text.depth = 18
         config.model.text.mlp_dim = 16384
