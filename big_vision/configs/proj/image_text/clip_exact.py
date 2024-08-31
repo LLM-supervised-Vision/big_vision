@@ -122,7 +122,7 @@ def get_config(arg=None):
         config.model.text.variant = 'B'
         config.model.text.vocab_size = 32_000
         config.model.text.pool_type = 'last'
-        config.model.text.autoregressive = False
+        config.model.text.autoregressive = True
         config.model.text.dtype_mm = 'bfloat16'
         config.model.image.dtype_mm = 'bfloat16'
         config.model.max_temperature = False
@@ -144,6 +144,13 @@ def get_config(arg=None):
     if arg.scale == 'large':
         config.input.batch_size = 32768
         config.total_steps = 274658
+
+    if arg.scale == 'gemma':
+        config.model.text.variant = None
+        config.model.text.width = 2048
+        config.model.text.depth = 18
+        config.model.text.mlp_dim = 16384
+        config.model.text.num_heads = 8
     
     if arg.scale == 'max':
         config.model.image.variant = 'L/14'
@@ -206,10 +213,15 @@ def get_config(arg=None):
                 'coco_captions("captions")|choice(inkey="captions", outkey="text")|'
                 f'{tokenizer("text", "labels")}|keep("image", "labels")')
 
-        config.input.batch_size = 16
-        config.model.image.variant = 'mu/16'
-        config.model.text.variant = 'mu'
-        config.model.text.num_classes = 32
+        # config.input.batch_size = 16
+        # config.model.image.variant = 'mu/16'
+        # config.model.text.variant = 'mu'
+        # config.model.text.num_classes = 32
         config.wandb = False
+        config.input.batch_size = 32
+        config.total_steps = 10
+        config.schedule = [('.*', dict(decay_type='cosine', warmup_steps=3))]
+        config.log_training_steps = 1
+        config.evals = {}
 
     return config
