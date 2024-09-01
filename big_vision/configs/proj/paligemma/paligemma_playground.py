@@ -85,7 +85,7 @@ def get_config(arg=None):
   c = bvcc.parse_arg(
       arg, res=224,
       mode='generative', freeze_vit=False, 
-      freeze_llm=True, llm_ckpt="full", llm_pool='none',
+      freeze_llm=True, llm_ckpt="full", llm_pool='none', llm_lr_mult=0.1,
       batch_size=8192, total_samples=3.0, dtype='float32',
       debug=False, 
   )
@@ -114,7 +114,7 @@ def get_config(arg=None):
   if not c.freeze_vit and not c.freeze_llm:
     c.lr_mults = [
       ('img/.*', 1.0),
-      ('llm/.*', 0.1),
+      ('llm/.*', c.llm_lr_mult),
       ('t', 1.0),
     ]
 
