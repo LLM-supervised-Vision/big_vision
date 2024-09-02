@@ -85,7 +85,7 @@ def get_config(arg=None):
   c = bvcc.parse_arg(
       arg, res=224,
       mode='generative', freeze_vit=False, 
-      freeze_llm=True, llm_ckpt="full", llm_pool='none', llm_lr_mult=0.1,
+      freeze_llm=True, llm_ckpt="full", llm_pool='none', llm_lr_mult=0.1, llm_dropout=0.0,
       batch_size=8192, total_samples=3.0, dtype='float32',
       debug=False, 
   )
@@ -122,7 +122,7 @@ def get_config(arg=None):
   c.model_name = 'proj.paligemma.paligemma'
   c.model = {}
   c.model.img = dict(variant='B/16', pool_type='none', head_zeroinit=False, scan=True, dtype_mm=c.dtype)
-  c.model.llm = dict(vocab_size=256_000 + 1024 + 128, dropout=0.0, scan=True, dtype=c.dtype, lyrs_frozen=-1, pool=c.llm_pool)
+  c.model.llm = dict(vocab_size=256_000 + 1024 + 128, dropout=c.llm_dropout, scan=True, dtype=c.dtype, lyrs_frozen=-1, pool=c.llm_pool)
 
   llm_ckpt = '/home/austinwang/gemma2b.npz'
   dont_load = ['MAPHead.*'] if c.model.llm['pool'] == 'map' else []
