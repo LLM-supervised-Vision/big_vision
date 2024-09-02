@@ -556,6 +556,8 @@ class Model(nn.Module):
       encoded = encoded[:, 1:]
     elif self.pool == "argmax":
       out["head_input"] = jnp.argmax(x, axis=1)
+    elif self.pool == "eos":
+      pass
     elif self.pool == "none":
       pass
     else:
