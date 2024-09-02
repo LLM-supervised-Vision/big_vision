@@ -111,7 +111,7 @@ def _contrastive_logits(train_state, batch, *, model):
       eos_mask = text == 1
       ztxt = jnp.where(eos_mask[:, :, None], out['llm/pre_logits'], 0).sum(axis=1)
     else:
-    ztxt = out['llm/head_input']
+      ztxt = out['llm/head_input']
     ztxt_norm = jnp.linalg.norm(ztxt, axis=-1, keepdims=True) 
     ztxt = ztxt / (ztxt_norm + 1e-8)
 
