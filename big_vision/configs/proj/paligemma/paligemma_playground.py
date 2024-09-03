@@ -39,7 +39,7 @@ def add_eval(c, res, *, text_len=64, prefix, mode, **kw):
       pp_txt='|'.join([
         f'strfmt("{prefix}", outkey="prefix")',
         'copy(inkey="texts", outkey="suffix")',
-        combine_and_keep_eval(text_len),
+        combine_and_keep_eval(text_len,eos='yes'),
         f'copy(inkey="text", outkey="labels")',
       ]),
       log_steps=1000,
@@ -52,7 +52,7 @@ def add_eval(c, res, *, text_len=64, prefix, mode, **kw):
       pp_txt='|'.join([
         f'strfmt("{prefix}", outkey="prefix")',
         'copy(inkey="texts", outkey="suffix")',
-        combine_and_keep_eval(text_len),
+        combine_and_keep_eval(text_len,eos='yes'),
         f'copy(inkey="text", outkey="labels")',
       ]),
       dataset_names=('imagenet2012','imagenet_v2','imagenet2012_real'),
@@ -197,6 +197,11 @@ def get_config(arg=None):
     c.input.batch_size = 32
     c.total_steps = 10
     c.log_training_steps = 1
-    c.evals = {}
+
+    eval_when_debugging = False
+    if eval_when_debugging:
+      for k in c.evals: c.evals[k]['batch_size'] = 32
+    else:
+      c.evals = {}
 
   return c

@@ -42,7 +42,7 @@ def combine_and_keep_train(text_len, before=(), sep='\n'):
   ])
 
 
-def combine_and_keep_eval(text_len, keep=tuple(), before=(), sep='\n'):
+def combine_and_keep_eval(text_len, keep=tuple(), before=(), sep='\n', eos='no'):
   return '|'.join([
       *before,
       # Same as training, except that suffix is now the empty string.
@@ -53,7 +53,7 @@ def combine_and_keep_eval(text_len, keep=tuple(), before=(), sep='\n'):
       # At eval time, there can be also a suffix key in the data. If so it is
       # tokenized without EOS and decoding will continue from it.
       'setdefault("suffix", "")',
-      tok(key='suffix', eos='no'),
+      tok(key='suffix', eos=eos),
       # If masks confuse you, see (internal link)
       'masked_concat(["prefix", "septok", "suffix"], mask_ar=[0, 0, 1], mask_input=[1, 1, 1])',  # pylint: disable=line-too-long
       f'tolen({text_len}, pad_value=0, key="text")',  # value doesn't matter.
