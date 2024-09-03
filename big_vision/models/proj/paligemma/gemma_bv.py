@@ -158,7 +158,10 @@ class Model(nn.Module):
     """Extends decoding cache with `x` [B, 1, E] and returns logits."""
     assert x.shape[1] == 1, "Only supports extend the cache by one token."
     if self.model.scan:
-      cache_size = self.variables["cache"]["layers"]["attn"]["k_cache"].shape[2]
+      if self.model.lyrs_frozen<0:
+        cache_size = self.variables["cache"]["layers"]["attn"]["k_cache"].shape[2]
+      else:
+        cache_size = self.variables["cache"]["layers"]["frozen"]["attn"]["k_cache"].shape[2]
     else:
       raise NotImplementedError("Not implemented yet.")
 

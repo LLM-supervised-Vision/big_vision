@@ -629,7 +629,7 @@ def load(init_params, init_file, model_cfg=None, dont_load=()):
       'trainable': jax.tree.map(lambda x: x[num_frozen_layers:], params['layers'])
     }
 
-  if 'frozen' in params['layers'] and 'attn' in init_params['layers']:
+  if 'frozen' in params['layers'] and init_params is not None and 'attn' in init_params['layers']:
     num_frozen_layers = params['layers']['frozen']['attn']['attn_vec_einsum']['w'].shape[0]
     # merge params['layers']['frozen'] and init_params['layers']['trainable'] (two sub-trees)
     raise NotImplementedError('merge params')
