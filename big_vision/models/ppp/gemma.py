@@ -622,7 +622,7 @@ def load(init_params, init_file, model_cfg=None, dont_load=()):
         model_cfg["vocab_size"],
     )
 
-  if 'frozen' in init_params['layers'] and 'attn' in params['layers']:
+  if init_params is not None and 'frozen' in init_params['layers'] and 'attn' in params['layers']:
     num_frozen_layers = init_params['layers']['frozen']['attn']['attn_vec_einsum']['w'].shape[0]
     params['layers'] = {
       'frozen': jax.tree.map(lambda x: x[:num_frozen_layers], params['layers']),

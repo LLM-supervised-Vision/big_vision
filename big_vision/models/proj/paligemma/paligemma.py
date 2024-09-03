@@ -285,7 +285,7 @@ def load(init_params, init_files, model_cfg, img_load_kw={}, llm_load_kw={}):  #
     init_files = {"img": f"{init_files}:img", "llm": f"{init_files}:llm"}
 
   if not init_params:  # Convenience to skip checks in colab.
-    init_params = {"img": None, "llm": None}
+    init_params = {"img": None, "llm": None, "t": None}
   restored_params = {**init_params}
 
   init_files = {**init_files}  # Needed because ConfigDict but we'll pop stuff.
