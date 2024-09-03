@@ -122,7 +122,10 @@ def get_config(arg=None):
   c.model_name = 'proj.paligemma.paligemma'
   c.model = {}
   c.model.img = dict(variant='B/16', pool_type='none', head_zeroinit=False, scan=True, dtype_mm=c.dtype)
-  c.model.llm = dict(vocab_size=256_000 + 1024 + 128, dropout=c.llm_dropout, scan=True, dtype=c.dtype, lyrs_frozen=-1, pool=c.llm_pool)
+  c.model.llm = dict(
+    # vocab_size=256_000 + 1024 + 128, 
+    dropout=c.llm_dropout, scan=True, dtype=c.dtype, lyrs_frozen=-1, pool=c.llm_pool
+  )
 
   llm_ckpt = '/home/austinwang/gemma2b.npz'
   dont_load = ['MAPHead.*'] if c.model.llm['pool'] == 'map' else []
