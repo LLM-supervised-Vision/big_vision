@@ -32,6 +32,8 @@ def _get_config(model):
   config.dtype = model.dtype
   config.lyrs_frozen = model.lyrs_frozen
   config.pool = model.pool
+  config.projection = model.projection
+  config.proj_bias = model.proj_bias
   return config
 
 
@@ -62,6 +64,8 @@ class Model(nn.Module):
   dtype: str = "float32"
   lyrs_frozen: int = -1
   pool: str = "none"
+  projection: bool = False
+  proj_bias: bool = False
 
   def setup(self):
     # The parent+name avoids an unnecessary nesting in params pytree.

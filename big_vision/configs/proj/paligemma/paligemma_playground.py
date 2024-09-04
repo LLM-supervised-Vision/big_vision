@@ -130,7 +130,9 @@ def get_config(arg=None):
     c.model['llm']['vocab_size'] = 256_000 + 1024 + 128
 
   llm_ckpt = '/home/austinwang/gemma2b.npz'
-  dont_load = ['MAPHead.*'] if c.model.llm['pool'] == 'map' else []
+  dont_load = []
+  if c.model.llm['pool'] == 'map': dont_load += ['MAPHead.*']
+  if c.model.llm['projection']: dont_load += ['head/.*']
   c.model_load = {'img_load_kw': {}, 'llm_load_kw': {'dont_load': dont_load}}
   match c.llm_ckpt:
     case 'full':
