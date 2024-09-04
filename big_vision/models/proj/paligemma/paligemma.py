@@ -15,7 +15,7 @@
 """Image encoder + AR-decoder LLM."""
 
 import importlib
-from typing import Any, Optional
+from typing import Any, Optional, Tuple, Union
 
 import flax.linen as nn
 import jax
@@ -64,10 +64,9 @@ class Model(nn.Module):
         f"big_vision.models.{self.llm_model}"
     ).Model(**(self.llm or {}), name="llm")
 
-    img_config = {"num_classes": self._llm.embdim, **(self.img or {})}
     self._img_model = importlib.import_module(
         f"big_vision.models.{self.img_model}"
-    ).Model(**img_config, name="img")
+    ).Model(**{"num_classes": self._llm.embdim, **(self.img or {})}, name="img")
 
     temp_init = jnp.log(self.temperature_init)
     self.t = self.param("t",lambda key, shape, dtype: temp_init * jnp.ones(shape, dtype), (1,), jnp.float32)

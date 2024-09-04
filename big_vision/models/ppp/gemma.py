@@ -397,13 +397,15 @@ class Model(nn.Module):
   # TODO: Wire this in all places needed so that the model can be
   # run with different activation dtype. For now only float32 runs.
   embed_dtype: str = "float32"
-  dtype: str = "float32"
 
   scan: bool = False
   remat_policy: str = "none"
   
+  dtype: str = "float32"
   lyrs_frozen: int = -1
   pool: str = "none"
+  projection: bool = False
+  proj_bias: bool = False
 
   @nn.compact
   def __call__(
@@ -562,6 +564,9 @@ class Model(nn.Module):
       pass
     else:
       raise ValueError(f"Unknown pool type: '{self.contrastive_pool_type}'")
+
+    if self.projection:
+      out["contrastive_logits"] = nn.Dense(self.width, use_bias=self.proj_bias, name="head")(x)
 
     x = embedder.decode(x)
     out["logits"] = x
