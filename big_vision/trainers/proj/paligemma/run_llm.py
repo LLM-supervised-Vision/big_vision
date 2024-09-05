@@ -64,8 +64,8 @@ TOKENIZER = "gemma(tokensets=['loc', 'seg'])"
 def load_model(ckpt):
   model_cfg = ml_collections.FrozenConfigDict(dict(
       img=dict(variant="So400m/14", pool_type="none", scan=True),
-      llm=dict(scan=True)#vocab_size=256_000 + 1024 + 128),
-      # llm=dict(lyrs_frozen=9,vocab_size=256_000 + 1024 + 128,scan=True,dropout=0.0,pool='gap'),
+      # llm=dict(scan=True)#vocab_size=256_000 + 1024 + 128),
+      llm=dict(lyrs_frozen=9,scan=True,dropout=0.0,pool='gap'),
   ))
   model = model_mod.Model(**model_cfg)
   params = model_mod.load(None, ckpt, model_cfg)

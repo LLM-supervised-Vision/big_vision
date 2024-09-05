@@ -129,11 +129,13 @@ def get_config(arg=None):
   if c.llm_clean_vocab == False:
     c.model['llm']['vocab_size'] = 256_000 + 1024 + 128
 
-  llm_ckpt = '/home/austinwang/gemma2b.npz'
   dont_load = []
   if c.model.llm['pool'] == 'map': dont_load += ['MAPHead.*']
   if c.model.llm['projection']: dont_load += ['head/.*']
   c.model_load = {'img_load_kw': {}, 'llm_load_kw': {'dont_load': dont_load}}
+
+  llm_ckpt = '/home/austinwang/gemma2b.npz'
+  if ':' in c.llm_ckpt: c.llm_ckpt, lyrs_frozen = c.llm_ckpt.split(':')
   match c.llm_ckpt:
     case 'full':
       pass
@@ -146,7 +148,7 @@ def get_config(arg=None):
       llm_ckpt = '/home/austinwang/gemma2b_first_6.npz'
       c.model_load['llm_load_kw']['dont_load'] += ['final_norm/scale']
     case 'partial_frozen':
-      c.model.llm['lyrs_frozen'] = 9
+      c.model.llm['lyrs_frozen'] = int(lyrs_frozen)
       assert c.freeze_llm==False, "partial_frozen is for unfreezing"
       c.schedule = [
         ('img/.*', None if c.freeze_vit else sched),
