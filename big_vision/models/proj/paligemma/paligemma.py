@@ -58,6 +58,7 @@ class Model(nn.Module):
   llm_model: str = "proj.paligemma.gemma_bv"
   llm: Optional[ConfigDict] = None
   temperature_init: float = 1/0.07
+  bias_init: Optional[float] = None
 
   def setup(self):
     self._llm = importlib.import_module(
@@ -70,6 +71,9 @@ class Model(nn.Module):
 
     temp_init = jnp.log(self.temperature_init)
     self.t = self.param("t",lambda key, shape, dtype: temp_init * jnp.ones(shape, dtype), (1,), jnp.float32)
+    if (b_init := self.bias_init) is not None:
+      self.b = self.param("b", lambda k, s, d: b_init * jnp.ones(s, d),
+                            (1,), jnp.float32)
 
   def embed_image(self, image, train=False):
     out = {}
@@ -175,6 +179,7 @@ class Model(nn.Module):
     out["text_logits"] = text_logits
     out["text_tokens"] = jnp.argmax(text_logits, axis=-1)
     out["t"] = jnp.exp(self.t)
+    if hasattr(self, "b"): out["b"] = self.b
     return text_logits, out
 
   def prefill_cache(self, x, input_mask, mask_ar, *, cache_size):

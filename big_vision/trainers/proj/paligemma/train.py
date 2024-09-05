@@ -396,12 +396,20 @@ def main(argv):
             ztxt = out['llm/head_input']
           ztxt_norm = jnp.linalg.norm(ztxt, axis=-1, keepdims=True) 
           ztxt = ztxt / (ztxt_norm + 1e-8)
-
-          contrastive_logits = jnp.dot(zimg, ztxt.T) * out["t"]
-          l1 = -jnp.diag(jax.nn.log_softmax(contrastive_logits, axis=1))  # NLL img->txt
-          l2 = -jnp.diag(jax.nn.log_softmax(contrastive_logits, axis=0))  # NLL txt->img
-          co_loss = jnp.mean(0.5 * (l1 + l2))
-
+          match config.get("loss_fn"):
+            case "softmax":    
+              contrastive_logits = jnp.dot(zimg, ztxt.T) * out["t"]
+              l1 = -jnp.diag(jax.nn.log_softmax(contrastive_logits, axis=1))  # NLL img->txt
+              l2 = -jnp.diag(jax.nn.log_softmax(contrastive_logits, axis=0))  # NLL txt->img
+              co_loss = jnp.mean(0.5 * (l1 + l2))
+            case "sigmoid":
+              logits = jnp.dot(zimg, ztxt.T)
+              logits = logits * out["t"] + out["b"]
+              eye = jnp.eye(zimg.shape[0])
+              m1_diag1 = -jnp.ones_like(logits) + 2 * eye
+              loglik = jax.nn.log_sigmoid(m1_diag1 * logits)
+              nll = -jnp.sum(loglik, axis=-1)
+              co_loss = jnp.mean(nll)
           return co_loss, {"training_loss": co_loss}
         case "generative":
           logp = jax.nn.log_softmax(text_logits, axis=-1)
