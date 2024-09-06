@@ -299,14 +299,14 @@ class Model(nn.Module):
   emb_dim: int = 512
   enc_dropout_rate: float = 0.
   vocab_size: int = 32_000
-  seq_len: int = 256
+  seq_len: int = 64
 
   # Encoder:
   patches: Sequence[int] = (16, 16)
   input_seq_len: int = 768
   posemb_type: str = "learn"
   patch_dropout: float = 0.
-  pool_type: str = "map:256"
+  pool_type: str = "map:196"
 
   # Decoder:
   decoder_num_heads: int = 0
@@ -430,7 +430,7 @@ class Model(nn.Module):
 
       unimodal_decoder_mask = jnp.concatenate((unimodal_decoder_mask[:,:,:-1,:], new_cls_mask[:,:,-1:,:]), axis=-2)
       logging.info("decode: unimodal_decoder_mask.shape: %s", unimodal_decoder_mask.shape)
-      logging.info("decode: unimodal_decoder_mask.shape: %s", unimodal_decoder_mask.shape)
+
       # Prepare the multimodal decoder mask
       multimodal_decoder_mask = nn.make_causal_mask(targets) # [B,1,L,L]
       logging.info("decode: multimodal_decoder_mask.shape: %s", multimodal_decoder_mask.shape)

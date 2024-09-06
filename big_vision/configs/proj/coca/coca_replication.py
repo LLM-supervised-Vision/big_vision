@@ -122,6 +122,7 @@ def get_config(arg=None):
   config.model.patches = (patch_size, patch_size)
   config.model.seq_len = max_text_tokens
   config.model.posemb_type = 'learn'
+  config.model.pool_type = f'map:{(config.res//patch_size)**2}'
 
   # Decoder
   config.model.decoder_num_layers = config.dec_lyr
@@ -149,7 +150,7 @@ def get_config(arg=None):
   config.label_smoothing = 0.0
 
   config.warmup_steps = max(int(config.warmup_ratio * config.total_steps), 100)
-  schedule = [('.*',dict(decay_type='linear',
+  schedule = [('.*',dict(decay_type='cosine',
                   warmup_steps=config.warmup_steps
                   if not config.runlocal else 5))]
 
@@ -167,6 +168,12 @@ def get_config(arg=None):
               'coco_captions("captions")|choice(inkey="captions", outkey="text")|'
               f'{tokenizer("text", "labels")}|keep("image", "labels")')
     config.input.pp = pp_coco
+    config.input.shuffle_buffer_size = None
+    config.input.batch_size = 32
+    config.total_steps = 10
+    config.log_training_steps = 1
+    config.schedule = [('.*',dict(decay_type='cosine', warmup_steps=3))]
+    config.evals = {}
 
   if config.eval_only:
     config.total_steps = 0
