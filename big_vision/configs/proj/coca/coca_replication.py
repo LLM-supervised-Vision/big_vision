@@ -26,6 +26,7 @@ def get_config(arg=None):
                           wd=1e-4,
                           dtype='float32',
                           dec_lyr=12,
+                          masked_pred_prob=0.0,
                           res=224,
                           scan=True,
                           eval_only=False,
@@ -131,7 +132,7 @@ def get_config(arg=None):
   config.model.decoder_mlp_dim = 0
   config.model.decoder_emb_dim = 0
   config.model.dec_dropout_rate = 0.0
-  config.model.masked_pred_prob = 0.0
+  config.model.masked_pred_prob = config.masked_pred_prob
   config.model.masking_ratio = 1.0
   config.model.decoder_bias = True
 

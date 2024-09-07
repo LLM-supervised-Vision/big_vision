@@ -496,7 +496,6 @@ class Model(nn.Module):
     if text is not None:
       decoded, contrastive_ztxt = self.decode(captioning_zimg, text, decode=decode, train=train)
       logging.info("Model: contrastive_ztxt shape: %s", contrastive_ztxt.shape)
-      logging.info("Model: out.keys(): %s", out.keys())
       if image is not None: logging.info("Model: decoded shape: %s", decoded.shape)
       out["txt/norm"] = jnp.linalg.norm(contrastive_ztxt, axis=1, keepdims=True)
       out["txt/normalized"] = contrastive_ztxt = contrastive_ztxt / (out["txt/norm"] + 1e-8)
