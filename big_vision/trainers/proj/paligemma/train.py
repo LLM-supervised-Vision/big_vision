@@ -240,9 +240,8 @@ def main(argv):
         rngs={"params": rng, "dropout": rng},
         mutable=["params"])
     params = flax.core.unfreeze(variables["params"])
-
-    # import pdb; pdb.set_trace()
-    if model.img.get("beit_init", False): params = model.fix_init_weight(params)
+    if model.img.get("beit_init", False): 
+      params = model_mod.fix_init_weight(params)
     return params
     # # bs=1 for dummy forward pass.
     # dummy_img = batch["image"][0:1]

@@ -31,7 +31,7 @@ import numpy as np
 import scipy.ndimage
 
 beit_kernel_init = nn.initializers.truncated_normal(0.02, dtype=jnp.float32, lower=-0.02, upper=0.02)
-beit_bias_init = nn.initializers.zeros(dtype=jnp.float32)
+beit_bias_init = nn.initializers.zeros
 
 def posemb_sincos_2d(h, w, width, temperature=10_000., dtype=jnp.float32):
   """Follows the MoCo v3 logic."""
@@ -312,25 +312,6 @@ class _Model(nn.Module):
       x = out["logits"] = head(x)
 
     return x, out
-  
-  def fix_init_weight(self, params):
-    """Rescale the weights of attention projection and MLP fc2 layers."""
-    def rescale(param, layer_id): return jax.tree_map(lambda x: x / jnp.sqrt(2.0 * layer_id), param)
-    
-    new_params = params.copy()
-    for i in range(self.depth):
-        layer_id = i + 1
-        # Rescale attention projection weights
-        new_params['Transformer'][f'encoderblock_{i}']['MultiHeadDotProductAttention_0']['out']['kernel'] = rescale(
-            new_params['Transformer'][f'encoderblock_{i}']['MultiHeadDotProductAttention_0']['out']['kernel'], 
-            layer_id
-        )
-        # Rescale MLP fc2 weights
-        new_params['Transformer'][f'encoderblock_{i}']['MlpBlock_0']['Dense_1']['kernel'] = rescale(
-            new_params['Transformer'][f'encoderblock_{i}']['MlpBlock_0']['Dense_1']['kernel'], 
-            layer_id
-        )
-    return new_params
 
 
 def Model(num_classes=None, *, variant=None, **kw):  # pylint: disable=invalid-name
