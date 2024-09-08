@@ -239,7 +239,11 @@ def main(argv):
         batch["image"], batch["text"][:, :-1], batch["mask_ar"][:, :-1], is_blind=config.get("mode")=="contrastive",
         rngs={"params": rng, "dropout": rng},
         mutable=["params"])
-    return flax.core.unfreeze(variables["params"])
+    params = flax.core.unfreeze(variables["params"])
+
+    # import pdb; pdb.set_trace()
+    if model.img.get("beit_init", False): params = model.fix_init_weight(params)
+    return params
     # # bs=1 for dummy forward pass.
     # dummy_img = batch["image"][0:1]
     # # dummy_img = jnp.ones([1, 224, 224, 3])

@@ -30,6 +30,8 @@ import jax.numpy as jnp
 import numpy as np
 import scipy.ndimage
 
+beit_kernel_init = nn.initializers.truncated_normal(0.02, dtype=jnp.float32, lower=-0.02, upper=0.02)
+beit_bias_init = nn.initializers.zeros(dtype=jnp.float32)
 
 def posemb_sincos_2d(h, w, width, temperature=10_000., dtype=jnp.float32):
   """Follows the MoCo v3 logic."""
@@ -44,9 +46,9 @@ def posemb_sincos_2d(h, w, width, temperature=10_000., dtype=jnp.float32):
   return jnp.asarray(pe, dtype)[None, :, :]
 
 
-def get_posemb(self, typ, seqshape, width, name, dtype=jnp.float32):
+def get_posemb(self, typ, seqshape, width, name, dtype=jnp.float32, beit_init=False):
   if typ == "learn":
-    return self.param(name, nn.initializers.normal(stddev=1/np.sqrt(width)),
+    return self.param(name, nn.initializers.normal(stddev=1/np.sqrt(width)) if not beit_init else beit_kernel_init, 
                       (1, np.prod(seqshape), width), dtype)
   elif typ == "sincos2d":
     return posemb_sincos_2d(*seqshape, width, dtype=dtype)
@@ -59,6 +61,7 @@ class MlpBlock(nn.Module):
   mlp_dim: Optional[int] = None  # Defaults to 4x input dim
   dropout: float = 0.0
   dtype_mm: str = "float32"
+  beit_init: bool = False
 
   @nn.compact
   def __call__(self, x, deterministic=True):
@@ -67,6 +70,8 @@ class MlpBlock(nn.Module):
         kernel_init=nn.initializers.xavier_uniform(),
         bias_init=nn.initializers.normal(stddev=1e-6),
     )
+    if self.beit_init:
+      inits = dict(kernel_init=beit_kernel_init, bias_init=beit_bias_init)
 
     n, l, d = x.shape  # pylint: disable=unused-variable
     x = nn.Dense(self.mlp_dim or 4 * d, dtype=self.dtype_mm, **inits)(x)
@@ -82,6 +87,7 @@ class Encoder1DBlock(nn.Module):
   num_heads: int = 12
   dropout: float = 0.0
   dtype_mm: str = "float32"
+  beit_init: bool = False
   mask: Optional[jnp.ndarray] = None
   normalize_qk: bool = False
 
@@ -92,7 +98,7 @@ class Encoder1DBlock(nn.Module):
     y = nn.LayerNorm()(x)
     y = out["sa"] = nn.MultiHeadDotProductAttention(
         num_heads=self.num_heads,
-        kernel_init=nn.initializers.xavier_uniform(),
+        kernel_init=nn.initializers.xavier_uniform() if not self.beit_init else beit_kernel_init,
         normalize_qk=self.normalize_qk,
         deterministic=deterministic,
         dtype=self.dtype_mm,
@@ -104,7 +110,7 @@ class Encoder1DBlock(nn.Module):
     y = nn.LayerNorm()(x)
     y = out["mlp"] = MlpBlock(
         mlp_dim=self.mlp_dim, dropout=self.dropout,
-        dtype_mm=self.dtype_mm,
+        dtype_mm=self.dtype_mm, beit_init=self.beit_init
     )(y, deterministic)
     y = nn.with_logical_constraint(y, ("act_batch", "act_len", "act_emb"))
     y = nn.Dropout(rate=self.dropout)(y, deterministic)
@@ -119,6 +125,7 @@ class Encoder(nn.Module):
   mlp_dim: Optional[int] = None  # Defaults to 4x input dim
   num_heads: int = 12
   dropout: float = 0.0
+  beit_init: bool = False
   scan: bool = False
   remat_policy: str = "nothing_saveable"
   dtype_mm: str = "float32"
@@ -144,6 +151,7 @@ class Encoder(nn.Module):
           length=self.depth)(
               name="encoderblock",
               dtype_mm=self.dtype_mm,
+              beit_init=self.beit_init,
               mask=self.mask,
               normalize_qk=self.normalize_qk,
               mlp_dim=self.mlp_dim,
@@ -156,7 +164,7 @@ class Encoder(nn.Module):
       for lyr in range(self.depth):
         block_cur = Encoder1DBlock(
             name=f"encoderblock_{lyr}",
-            dtype_mm=self.dtype_mm, mask=self.mask, normalize_qk=self.normalize_qk,
+            dtype_mm=self.dtype_mm, beit_init=self.beit_init, mask=self.mask, normalize_qk=self.normalize_qk,
             mlp_dim=self.mlp_dim, num_heads=self.num_heads,
             dropout=self.dropout)
         x, out[f"block{lyr:02d}"] = block_cur(x, deterministic)
@@ -172,6 +180,7 @@ class MAPHead(nn.Module):
   n_queries: int = 1
   dtype_mm: str = "float32"
   normalize_qk: bool = False
+  beit_init: bool = False
 
   @nn.compact
   def __call__(self, x):
@@ -184,11 +193,12 @@ class MAPHead(nn.Module):
     x = nn.MultiHeadDotProductAttention(
         num_heads=self.num_heads, normalize_qk=self.normalize_qk,
         dtype=self.dtype_mm,
-        kernel_init=nn.initializers.xavier_uniform())(probe, x)
+        kernel_init=nn.initializers.xavier_uniform() if not self.beit_init else beit_kernel_init,
+      )(probe, x)
 
     # TODO: dropout on head?
     y = nn.LayerNorm()(x)
-    x = x + MlpBlock(dtype_mm=self.dtype_mm,mlp_dim=self.mlp_dim)(y)
+    x = x + MlpBlock(dtype_mm=self.dtype_mm,mlp_dim=self.mlp_dim,beit_init=self.beit_init)(y)
     if self.n_queries == 1:
       x = x[:, 0]
     return x
@@ -208,6 +218,7 @@ class _Model(nn.Module):
   dropout: float = 0.0
   pool_type: str = "gap"  # Can also be "map" or "tok"
   head_zeroinit: bool = True
+  beit_init: bool = False
   mask: Optional[jnp.ndarray] = None
   normalize_qk: bool = False
   scan: bool = False
@@ -222,10 +233,11 @@ class _Model(nn.Module):
 
     image = jnp.asarray(image, self.dtype_mm)
 
+    inits = dict() if not self.beit_init else dict(kernel_init=beit_kernel_init, bias_init=beit_bias_init)
     # Patch extraction
     x = out["stem"] = nn.Conv(
         self.width, self.patch_size, strides=self.patch_size,
-        padding="VALID", name="embedding", dtype=self.dtype_mm)(image)
+        padding="VALID", name="embedding", dtype=self.dtype_mm, **inits)(image)
 
     n, h, w, c = x.shape
     x = jnp.reshape(x, [n, h * w, c])
@@ -235,7 +247,7 @@ class _Model(nn.Module):
         self, self.posemb, (h, w), c, "pos_embedding", x.dtype)
 
     if self.pool_type == "tok":
-      cls = self.param("cls", nn.initializers.zeros, (1, 1, c), x.dtype)
+      cls = self.param("cls", nn.initializers.zeros if not self.beit_init else beit_kernel_init, (1, 1, c), x.dtype)
       x = jnp.concatenate([jnp.tile(cls, [n, 1, 1]), x], axis=1)
 
     n, l, c = x.shape  # pylint: disable=unused-variable
@@ -246,6 +258,7 @@ class _Model(nn.Module):
         mlp_dim=self.mlp_dim,
         num_heads=self.num_heads,
         dropout=self.dropout,
+        beit_init=self.beit_init,
         mask=self.mask,
         normalize_qk=self.normalize_qk,
         scan=self.scan,
@@ -257,7 +270,8 @@ class _Model(nn.Module):
 
     if self.pool_type == "map":
       x = out["head_input"] = MAPHead(
-          num_heads=self.num_heads, mlp_dim=self.mlp_dim, normalize_qk=self.normalize_qk, dtype_mm=self.dtype_mm)(x)
+          num_heads=self.num_heads, mlp_dim=self.mlp_dim, beit_init=self.beit_init,
+          normalize_qk=self.normalize_qk, dtype_mm=self.dtype_mm)(x)
     elif self.pool_type == "gap":
       x = out["head_input"] = jnp.mean(x, axis=1)
     elif self.pool_type == "0":
@@ -269,8 +283,8 @@ class _Model(nn.Module):
       x = out["head_input"] = jnp.argmax(x, axis=1)
     elif self.pool_type[:4] == "map:" and self.pool_type[4:].isdigit():
       n_queries = int(self.pool_type[4:])
-      out['captioning_zimg'] = MAPHead(num_heads=self.num_heads, mlp_dim=self.mlp_dim, normalize_qk=self.normalize_qk, n_queries=n_queries, dtype_mm=self.dtype_mm)(x)
-      out['contrastive_zimg'] = MAPHead(num_heads=self.num_heads, mlp_dim=self.mlp_dim, normalize_qk=self.normalize_qk, n_queries=1, dtype_mm=self.dtype_mm)(x)
+      out['captioning_zimg'] = MAPHead(num_heads=self.num_heads, mlp_dim=self.mlp_dim, beit_init=self.beit_init, normalize_qk=self.normalize_qk, n_queries=n_queries, dtype_mm=self.dtype_mm)(x)
+      out['contrastive_zimg'] = MAPHead(num_heads=self.num_heads, mlp_dim=self.mlp_dim, beit_init=self.beit_init, normalize_qk=self.normalize_qk, n_queries=1, dtype_mm=self.dtype_mm)(x)
       x = out["head_input"] = out['contrastive_zimg'].squeeze()
     elif self.pool_type == "none":
       pass
@@ -292,11 +306,31 @@ class _Model(nn.Module):
 
     if self.num_classes:
       kw = {"kernel_init": nn.initializers.zeros} if self.head_zeroinit else {}
+      if self.beit_init: kw['kernel_init'] = beit_kernel_init
       head = nn.Dense(self.num_classes, name="head", use_bias=self.proj_bias, **kw)
       x_2d = out["logits_2d"] = head(x_2d)
       x = out["logits"] = head(x)
 
     return x, out
+  
+  def fix_init_weight(self, params):
+    """Rescale the weights of attention projection and MLP fc2 layers."""
+    def rescale(param, layer_id): return jax.tree_map(lambda x: x / jnp.sqrt(2.0 * layer_id), param)
+    
+    new_params = params.copy()
+    for i in range(self.depth):
+        layer_id = i + 1
+        # Rescale attention projection weights
+        new_params['Transformer'][f'encoderblock_{i}']['MultiHeadDotProductAttention_0']['out']['kernel'] = rescale(
+            new_params['Transformer'][f'encoderblock_{i}']['MultiHeadDotProductAttention_0']['out']['kernel'], 
+            layer_id
+        )
+        # Rescale MLP fc2 weights
+        new_params['Transformer'][f'encoderblock_{i}']['MlpBlock_0']['Dense_1']['kernel'] = rescale(
+            new_params['Transformer'][f'encoderblock_{i}']['MlpBlock_0']['Dense_1']['kernel'], 
+            layer_id
+        )
+    return new_params
 
 
 def Model(num_classes=None, *, variant=None, **kw):  # pylint: disable=invalid-name
