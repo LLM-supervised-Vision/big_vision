@@ -309,3 +309,35 @@ def load(init_params, init_files, model_cfg, img_load_kw={}, llm_load_kw={}):  #
       f"a typo. Here it is: {init_files}")
 
   return restored_params
+
+def fix_init_weight(params):
+  """Rescale the weights of ViT attention projection and MLP fc2 layers."""
+
+  if 'encoderblock' in params['img']['Transformer']: # img scan=True
+    vit_depth = params['img']['Transformer']['encoderblock']['LayerNorm_0']['scale'].shape[0]
+    rescale_matrix = jnp.array([1.0 / jnp.sqrt(2.0 * i) for i in range(1, vit_depth + 1)])
+    params['img']['Transformer']['encoderblock']['MultiHeadDotProductAttention_0']['out']['kernel'] *= rescale_matrix[:, None, None, None]
+    params['img']['Transformer']['encoderblock']['MlpBlock_0']['Dense_1']['kernel'] *= rescale_matrix[:, None, None]
+
+
+  elif 'encoderblock_0' in params['img']['Transformer']: # img scan=False
+    def rescale(p, layer_id): 
+      return jax.tree_map(lambda x: x / jnp.sqrt(2.0 * layer_id), p)
+    vit_depth = len(params['img']['Transformer'])
+    for i in range(vit_depth):
+      layer_id = i + 1
+      # Rescale attention projection weights
+      params['img']['Transformer'][f'encoderblock_{i}']['MultiHeadDotProductAttention_0']['out']['kernel'] = rescale(
+        params['img']['Transformer'][f'encoderblock_{i}']['MultiHeadDotProductAttention_0']['out']['kernel'], 
+        layer_id
+      )
+      # Rescale MLP fc2 weights
+      params['img']['Transformer'][f'encoderblock_{i}']['MlpBlock_0']['Dense_1']['kernel'] = rescale(
+        params['img']['Transformer'][f'encoderblock_{i}']['MlpBlock_0']['Dense_1']['kernel'], 
+        layer_id
+      )
+
+  else:
+    raise ValueError("Unknown image model")
+  
+  return params
