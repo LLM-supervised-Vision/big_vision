@@ -95,7 +95,6 @@ def drop_path(x, drop_prob: float = 0.0, deterministic: bool = False):
     Returns:
         Output tensor after applying drop path.
     """
-  
     keep_prob = 1 - drop_prob
     shape = (x.shape[0],) + (1,) * (x.ndim - 1)
     
@@ -132,7 +131,7 @@ class Encoder1DBlock(nn.Module):
     )(y, y, mask=self.mask)
     y = nn.with_logical_constraint(y, ("act_batch", "act_len", "act_emb"))
     y = nn.Dropout(rate=self.dropout)(y, deterministic)
-    y = drop_path(y, drop_prob=self.drop_path_rate, deterministic=deterministic)
+    y = out['drop_path'] = drop_path(y, drop_prob=self.drop_path_rate, deterministic=deterministic)
     x = out["+sa"] = x + y
 
     y = nn.LayerNorm()(x)
@@ -142,7 +141,7 @@ class Encoder1DBlock(nn.Module):
     )(y, deterministic)
     y = nn.with_logical_constraint(y, ("act_batch", "act_len", "act_emb"))
     y = nn.Dropout(rate=self.dropout)(y, deterministic)
-    y = drop_path(y, drop_prob=self.drop_path_rate, deterministic=deterministic)
+    y = out['drop_path'] = drop_path(y, drop_prob=self.drop_path_rate, deterministic=deterministic)
     x = out["+mlp"] = x + y
     x = nn.with_logical_constraint(x, ("act_batch", "act_len", "act_emb"))
     return x, out
