@@ -306,7 +306,10 @@ class _Model(nn.Module):
 
     if self.num_classes:
       kw = {"kernel_init": nn.initializers.zeros} if self.head_zeroinit else {}
-      if self.beit_init: kw['kernel_init'] = beit_kernel_init
+      if self.beit_init: 
+        kw['kernel_init'] = beit_kernel_init
+        if self.proj_bias:
+          kw['bias_init'] = beit_bias_init
       head = nn.Dense(self.num_classes, name="head", use_bias=self.proj_bias, **kw)
       x_2d = out["logits_2d"] = head(x_2d)
       x = out["logits"] = head(x)
