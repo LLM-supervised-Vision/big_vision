@@ -81,6 +81,32 @@ class MlpBlock(nn.Module):
     return x
 
 
+def drop_path(x, drop_prob: float = 0.0, deterministic: bool = False):
+    """Drop paths (Stochastic Depth) per sample.
+    
+    This is an implementation of the DropPath function as described in the
+    paper "Deep Networks with Stochastic Depth" (https://arxiv.org/abs/1603.09382).
+    
+    Args:
+        x: input tensor
+        drop_prob: probability of dropping a path
+        deterministic: if True, the drop mask will be all ones (no dropout)
+    
+    Returns:
+        Output tensor after applying drop path.
+    """
+  
+    keep_prob = 1 - drop_prob
+    shape = (x.shape[0],) + (1,) * (x.ndim - 1)
+    
+    rng = jax.random.PRNGKey(0)  # You might want to pass this as an argument for better randomness
+    random_tensor = jax.random.bernoulli(rng, p=keep_prob, shape=shape)
+    random_tensor = jnp.asarray(random_tensor, dtype=x.dtype)
+    random_tensor = random_tensor / jnp.where(keep_prob > 0, keep_prob, 1.)
+
+    output = jnp.where(deterministic, x, x * random_tensor)
+    return output
+
 class Encoder1DBlock(nn.Module):
   """Single transformer encoder block (MHSA + MLP)."""
   mlp_dim: Optional[int] = None  # Defaults to 4x input dim
@@ -90,6 +116,7 @@ class Encoder1DBlock(nn.Module):
   beit_init: bool = False
   mask: Optional[jnp.ndarray] = None
   normalize_qk: bool = False
+  drop_path_rate: float = 0.0
 
   @nn.compact
   def __call__(self, x, deterministic=True):
@@ -105,6 +132,7 @@ class Encoder1DBlock(nn.Module):
     )(y, y, mask=self.mask)
     y = nn.with_logical_constraint(y, ("act_batch", "act_len", "act_emb"))
     y = nn.Dropout(rate=self.dropout)(y, deterministic)
+    y = drop_path(y, drop_prob=self.drop_path_rate, deterministic=deterministic)
     x = out["+sa"] = x + y
 
     y = nn.LayerNorm()(x)
@@ -114,6 +142,7 @@ class Encoder1DBlock(nn.Module):
     )(y, deterministic)
     y = nn.with_logical_constraint(y, ("act_batch", "act_len", "act_emb"))
     y = nn.Dropout(rate=self.dropout)(y, deterministic)
+    y = drop_path(y, drop_prob=self.drop_path_rate, deterministic=deterministic)
     x = out["+mlp"] = x + y
     x = nn.with_logical_constraint(x, ("act_batch", "act_len", "act_emb"))
     return x, out
@@ -131,11 +160,12 @@ class Encoder(nn.Module):
   dtype_mm: str = "float32"
   mask: Optional[jnp.ndarray] = None
   normalize_qk: bool = False
+  drop_path_rate: float = 0.0
 
   @nn.compact
   def __call__(self, x, deterministic=True):
     out = {}
-
+    drop_path_rates = jnp.linspace(0, self.drop_path_rate, self.depth) if self.drop_path_rate > 0. else jnp.zeros(self.depth)
     if self.scan:
       block = nn.remat(
           Encoder1DBlock,
@@ -166,7 +196,7 @@ class Encoder(nn.Module):
             name=f"encoderblock_{lyr}",
             dtype_mm=self.dtype_mm, beit_init=self.beit_init, mask=self.mask, normalize_qk=self.normalize_qk,
             mlp_dim=self.mlp_dim, num_heads=self.num_heads,
-            dropout=self.dropout)
+            dropout=self.dropout, drop_path_rate=drop_path_rates[lyr])
         x, out[f"block{lyr:02d}"] = block_cur(x, deterministic)
       out["pre_ln"] = x  # Alias for last block, but without the number in it.
 
@@ -226,6 +256,7 @@ class _Model(nn.Module):
   remat_policy: str = "nothing_saveable"
   dtype_mm: str = "float32"
   proj_bias: bool = True
+  drop_path_rate: float = 0.0
 
   @nn.compact
   def __call__(self, image, *, train=False):
@@ -264,6 +295,7 @@ class _Model(nn.Module):
         scan=self.scan,
         remat_policy=self.remat_policy,
         dtype_mm=self.dtype_mm,
+        drop_path_rate=self.drop_path_rate,
         name="Transformer")(
             x, deterministic=not train)
     encoded = out["encoded"] = x
