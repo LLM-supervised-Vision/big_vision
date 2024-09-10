@@ -319,11 +319,11 @@ def fix_init_weight(params):
     params['img']['Transformer']['encoderblock']['MultiHeadDotProductAttention_0']['out']['kernel'] *= rescale_matrix[:, None, None, None]
     params['img']['Transformer']['encoderblock']['MlpBlock_0']['Dense_1']['kernel'] *= rescale_matrix[:, None, None]
 
-
   elif 'encoderblock_0' in params['img']['Transformer']: # img scan=False
     def rescale(p, layer_id): 
       return jax.tree_map(lambda x: x / jnp.sqrt(2.0 * layer_id), p)
-    vit_depth = len(params['img']['Transformer'])
+
+    vit_depth = len(params['img']['Transformer'])-1 # -1 for LayerNorm
     for i in range(vit_depth):
       layer_id = i + 1
       # Rescale attention projection weights

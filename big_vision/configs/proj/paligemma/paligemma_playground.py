@@ -84,9 +84,9 @@ def add_eval(c, res, *, text_len=64, prefix, mode, **kw):
 def get_config(arg=None):
   c = bvcc.parse_arg(
       arg, res=224,
-      mode='generative', loss_fn='softmax',
+      mode='generative', loss_fn='softmax', drop_path_rate=0.0,
       freeze_vit=False, img_variant='B/16', img_beit_init=False,
-      freeze_llm=True, llm_ckpt="full", llm_pool='none', llm_lr_mult=0.1, llm_dropout=0.0, llm_clean_vocab = False, llm_projection=False,
+      freeze_llm=True, llm_ckpt="full", llm_pool='none', llm_lr_mult=0.1, llm_dropout=0.0, llm_clean_vocab=False, llm_projection=False,
       batch_size=8192, total_samples=3.0, dtype='float32',
       debug=False, 
   )
@@ -124,10 +124,11 @@ def get_config(arg=None):
   c.model = {}
   c.model.temperature_init = 1/0.07 if c.loss_fn == 'softmax' else 10.0
   c.model.bias_init = None if c.loss_fn == 'softmax' else -10.0
-  c.model.img = dict(variant=c.img_variant, pool_type='none', head_zeroinit=False, beit_init=c.img_beit_init, scan=True, dtype_mm=c.dtype)
+  c.model.img = dict(variant=c.img_variant, pool_type='none', head_zeroinit=False, beit_init=c.img_beit_init, drop_path_rate=c.drop_path_rate, scan=False, dtype_mm=c.dtype)
   c.model.llm = dict(
     scan=True, dtype=c.dtype, 
     dropout=c.llm_dropout, lyrs_frozen=-1, pool=c.llm_pool, projection=c.llm_projection,
+    # drop_path_rate=c.drop_path_rate
   )
   if c.llm_clean_vocab == False:
     c.model['llm']['vocab_size'] = 256_000 + 1024 + 128
