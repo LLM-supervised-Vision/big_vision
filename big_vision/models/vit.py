@@ -115,10 +115,12 @@ class Encoder1DBlock(nn.Module):
   beit_init: bool = False
   mask: Optional[jnp.ndarray] = None
   normalize_qk: bool = False
-  drop_path_rate: float = 0.0
+  drop_path_rates: Optional[jnp.ndarray] = None
 
   @nn.compact
-  def __call__(self, x, deterministic=True):
+  def __call__(self, carry, deterministic=True):
+    x, layer_id = carry
+    drop_path_rate = self.drop_path_rates[layer_id]
     out = {}
     x = nn.with_logical_constraint(x, ("act_batch", "act_len", "act_emb"))
     y = nn.LayerNorm()(x)
@@ -131,7 +133,7 @@ class Encoder1DBlock(nn.Module):
     )(y, y, mask=self.mask)
     y = nn.with_logical_constraint(y, ("act_batch", "act_len", "act_emb"))
     y = nn.Dropout(rate=self.dropout)(y, deterministic)
-    y = out['drop_path'] = drop_path(y, drop_prob=self.drop_path_rate, deterministic=deterministic)
+    y = out['drop_path'] = drop_path(y, drop_prob=drop_path_rate, deterministic=deterministic)
     x = out["+sa"] = x + y
 
     y = nn.LayerNorm()(x)
@@ -141,10 +143,10 @@ class Encoder1DBlock(nn.Module):
     )(y, deterministic)
     y = nn.with_logical_constraint(y, ("act_batch", "act_len", "act_emb"))
     y = nn.Dropout(rate=self.dropout)(y, deterministic)
-    y = out['drop_path'] = drop_path(y, drop_prob=self.drop_path_rate, deterministic=deterministic)
+    y = out['drop_path'] = drop_path(y, drop_prob=drop_path_rate, deterministic=deterministic)
     x = out["+mlp"] = x + y
     x = nn.with_logical_constraint(x, ("act_batch", "act_len", "act_emb"))
-    return x, out
+    return (x, layer_id+1), out
 
 
 class Encoder(nn.Module):
@@ -159,20 +161,20 @@ class Encoder(nn.Module):
   dtype_mm: str = "float32"
   mask: Optional[jnp.ndarray] = None
   normalize_qk: bool = False
-  drop_path_rate: float = 0.0
+  max_drop_path_rate: float = 0.0
 
   @nn.compact
   def __call__(self, x, deterministic=True):
     out = {}
-    drop_path_rates = jnp.linspace(0, self.drop_path_rate, self.depth) if self.drop_path_rate > 0. else jnp.zeros(self.depth)
+    drop_path_rates = jnp.linspace(0, self.max_drop_path_rate, self.depth, dtype=self.dtype_mm) if self.max_drop_path_rate > 0. else jnp.zeros(self.depth,dtype=self.dtype_mm)
     if self.scan:
       block = nn.remat(
           Encoder1DBlock,
           prevent_cse=False,
           static_argnums=(2,),  # 0=self, 2=deterministic
           policy=getattr(jax.checkpoint_policies, self.remat_policy, None),
-          )
-      x, scan_out = nn.scan(
+      )
+      (x, final_layer_id), scan_out = nn.scan(
           block,
           variable_axes={"params": 0},
           split_rngs={"params": True, "dropout": True},
@@ -185,7 +187,9 @@ class Encoder(nn.Module):
               normalize_qk=self.normalize_qk,
               mlp_dim=self.mlp_dim,
               num_heads=self.num_heads,
-              dropout=self.dropout)(x, deterministic)
+              dropout=self.dropout,
+              drop_path_rates=drop_path_rates,
+          )((x, 0), deterministic)
       for lyr in range(self.depth):
         out[f"block{lyr:02d}"] = jax.tree.map(lambda o, l=lyr: o[l], scan_out)
     else:
@@ -294,7 +298,7 @@ class _Model(nn.Module):
         scan=self.scan,
         remat_policy=self.remat_policy,
         dtype_mm=self.dtype_mm,
-        drop_path_rate=self.drop_path_rate,
+        max_drop_path_rate=self.drop_path_rate,
         name="Transformer")(
             x, deterministic=not train)
     encoded = out["encoded"] = x
