@@ -164,7 +164,7 @@ class Encoder(nn.Module):
   @nn.compact
   def __call__(self, x, deterministic=True):
     out = {}
-    drop_path_rates = jnp.linspace(0, self.drop_path_rate, self.depth) if self.drop_path_rate > 0. else jnp.zeros(self.depth)
+    drop_path_rates = jnp.linspace(0, self.drop_path_rate, self.depth, dtype=self.dtype_mm) if self.drop_path_rate > 0. else jnp.zeros(self.depth, dtype=self.dtype_mm)
     if self.scan:
       block = nn.remat(
           Encoder1DBlock,

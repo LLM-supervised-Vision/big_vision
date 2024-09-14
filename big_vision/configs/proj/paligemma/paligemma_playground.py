@@ -124,7 +124,7 @@ def get_config(arg=None):
   c.model = {}
   c.model.temperature_init = 1/0.07 if c.loss_fn == 'softmax' else 10.0
   c.model.bias_init = None if c.loss_fn == 'softmax' else -10.0
-  c.model.img = dict(variant=c.img_variant, pool_type='none', head_zeroinit=False, beit_init=c.img_beit_init, drop_path_rate=c.drop_path_rate, scan=False, dtype_mm=c.dtype)
+  c.model.img = dict(variant=c.img_variant, pool_type='none', head_zeroinit=False, beit_init=c.img_beit_init, drop_path_rate=c.drop_path_rate, scan=True, dtype_mm=c.dtype)
   c.model.llm = dict(
     variant=c.llm_variant,scan=True, dtype=c.dtype, 
     dropout=c.llm_dropout, lyrs_frozen=-1, pool=c.llm_pool, projection=c.llm_projection,
