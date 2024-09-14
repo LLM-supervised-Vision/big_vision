@@ -30,7 +30,7 @@ import jax.numpy as jnp
 import numpy as np
 import scipy.ndimage
 
-beit_kernel_init = nn.initializers.truncated_normal(0.02, dtype=jnp.float32, lower=-0.02, upper=0.02)
+beit_kernel_init = nn.initializers.truncated_normal(1.0, dtype=jnp.float32, lower=-0.02, upper=0.02)
 beit_bias_init = nn.initializers.zeros
 
 def posemb_sincos_2d(h, w, width, temperature=10_000., dtype=jnp.float32):
