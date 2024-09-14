@@ -1212,14 +1212,16 @@ def startstop_prof_at_steps(
 # This is a very minimal variant for open-sourcing. Our internal code makes use
 # of multiple internal logging tools instead.
 class BigVisionMetricWriter:
-  """A class for logging metrics."""
+  """A class for logging metrics with local accumulation and less frequent GCS writing."""
 
-  def __init__(self, xid=-1, wid=-1, workdir=None, config=None):
+  def __init__(self, xid=-1, wid=-1, workdir=None, config=None, gcs_write_frequency=1000):
     self.step_start(0)
     if jax.process_index() != 0: return  # Only one host shall write stuff.
 
     self.pool = multiprocessing.pool.ThreadPool(1)  # 1 is important here.
     self.fname = None
+    self.local_logs = []
+    self.gcs_write_frequency = gcs_write_frequency
     if workdir:
       if xid != -1 and wid != -1:
         self.fname = os.path.join(workdir,
@@ -1253,20 +1255,31 @@ class BigVisionMetricWriter:
     return value  # Just for convenience
 
   def step_end(self):
-    """Ends a training step, write its full row."""
+    """Ends a training step, accumulate logs locally and potentially write to GCS."""
     if not self.step_metrics: return
 
-    def write(metrics):
-      with gfile.GFile(self.fname, "a") as f:
-        f.write(json.dumps({"step": self.step, **metrics}) + "\n")
+    self.local_logs.append({"step": self.step, **self.step_metrics})
 
-    if self.fname:
-      self.pool.apply(lambda: None)  # Potentially wait for past writes.
-      self.pool.apply_async(write, (self.step_metrics,))
+    if len(self.local_logs) >= self.gcs_write_frequency:
+      self.write_to_gcs()
+
+  def write_to_gcs(self):
+    """Write accumulated logs to GCS."""
+    if not self.fname or not self.local_logs: return
+
+    def write(logs):
+      with gfile.GFile(self.fname, "a") as f:
+        for log in logs:
+          f.write(json.dumps(log) + "\n")
+
+    self.pool.apply(lambda: None)  # Potentially wait for past writes.
+    self.pool.apply_async(write, (self.local_logs,))
+    self.local_logs = []  # Clear the local logs after writing
 
   def close(self):
     self.step_end()
     if jax.process_index() == 0:
+      self.write_to_gcs()  # Write any remaining logs
       self.pool.close()
       self.pool.join()
 
