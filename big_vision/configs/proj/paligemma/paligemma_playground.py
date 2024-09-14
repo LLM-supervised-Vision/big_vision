@@ -196,7 +196,7 @@ def get_config(arg=None):
   # These probably do not need any change/tuning
   c.input.shuffle_buffer_size = 50_000
   c.log_training_steps = 50
-  c.ckpt_steps = 1_000
+  c.ckpt_steps = 50_000
   c.pp_modules = ['ops_general', 'ops_image', 'ops_text', 'proj.paligemma.ops']
   c.seed = 0
   c.wandb = not c.debug
