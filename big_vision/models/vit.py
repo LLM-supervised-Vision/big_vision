@@ -118,7 +118,13 @@ class Encoder1DBlock(nn.Module):
   drop_path_rate: float = 0.0
 
   @nn.compact
-  def __call__(self, x, deterministic=True):
+  def __call__(self, carry, deterministic=True):
+    if isinstance(carry, tuple):
+      x, layer_id, total_layer = carry
+      drop_path_rate = self.drop_path_rate * layer_id / total_layer
+    else:
+      x = carry
+      drop_path_rate = self.drop_path_rate
     out = {}
     x = nn.with_logical_constraint(x, ("act_batch", "act_len", "act_emb"))
     y = nn.LayerNorm()(x)
@@ -131,7 +137,7 @@ class Encoder1DBlock(nn.Module):
     )(y, y, mask=self.mask)
     y = nn.with_logical_constraint(y, ("act_batch", "act_len", "act_emb"))
     y = nn.Dropout(rate=self.dropout)(y, deterministic)
-    y = out['drop_path'] = drop_path(y, drop_prob=self.drop_path_rate, deterministic=deterministic)
+    y = out['drop_path'] = drop_path(y, drop_prob=drop_path_rate, deterministic=deterministic)
     x = out["+sa"] = x + y
 
     y = nn.LayerNorm()(x)
@@ -141,9 +147,11 @@ class Encoder1DBlock(nn.Module):
     )(y, deterministic)
     y = nn.with_logical_constraint(y, ("act_batch", "act_len", "act_emb"))
     y = nn.Dropout(rate=self.dropout)(y, deterministic)
-    y = out['drop_path'] = drop_path(y, drop_prob=self.drop_path_rate, deterministic=deterministic)
+    y = out['drop_path'] = drop_path(y, drop_prob=drop_path_rate, deterministic=deterministic)
     x = out["+mlp"] = x + y
     x = nn.with_logical_constraint(x, ("act_batch", "act_len", "act_emb"))
+    if isinstance(carry, tuple):
+      return (x, layer_id+1, total_layer), out
     return x, out
 
 
@@ -172,7 +180,7 @@ class Encoder(nn.Module):
           static_argnums=(2,),  # 0=self, 2=deterministic
           policy=getattr(jax.checkpoint_policies, self.remat_policy, None),
           )
-      x, scan_out = nn.scan(
+      (x,final_layer_id,total_layer), scan_out = nn.scan(
           block,
           variable_axes={"params": 0},
           split_rngs={"params": True, "dropout": True},
@@ -185,7 +193,7 @@ class Encoder(nn.Module):
               normalize_qk=self.normalize_qk,
               mlp_dim=self.mlp_dim,
               num_heads=self.num_heads,
-              dropout=self.dropout)(x, deterministic)
+              dropout=self.dropout)((x, 0, self.depth), deterministic)
       for lyr in range(self.depth):
         out[f"block{lyr:02d}"] = jax.tree.map(lambda o, l=lyr: o[l], scan_out)
     else:
