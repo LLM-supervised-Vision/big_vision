@@ -121,8 +121,9 @@ class Encoder1DBlock(nn.Module):
   def __call__(self, carry, deterministic=True):
     out = {}
     if isinstance(carry, tuple):
-      x, layer_id, total_layer = carry
-      drop_path_rate = self.drop_path_rate * layer_id / total_layer
+      assert len(carry) == 2, f"Tuple carry should have 2 elements: (x,layer_id), got {len(carry)}"
+      x, layer_id = carry
+      drop_path_rate = self.drop_path_rate * layer_id
     else:
       x = carry
       drop_path_rate = self.drop_path_rate
@@ -152,7 +153,7 @@ class Encoder1DBlock(nn.Module):
     x = out["+mlp"] = x + y
     x = nn.with_logical_constraint(x, ("act_batch", "act_len", "act_emb"))
     if isinstance(carry, tuple):
-      return (x, layer_id+1, total_layer), out
+      return (x, layer_id+1), out
     return x, out
 
 
@@ -175,7 +176,7 @@ class Encoder(nn.Module):
     out = {}
     if self.drop_path_rate > 0.:
       drop_path_rates = jnp.linspace(0, self.drop_path_rate, self.depth, dtype=self.dtype_mm)  
-      carry = (x, 0, self.depth)
+      carry = (x, 0)
     else: 
       drop_path_rates = jnp.zeros(self.depth, dtype=self.dtype_mm)
       carry = x
@@ -201,7 +202,8 @@ class Encoder(nn.Module):
               mlp_dim=self.mlp_dim,
               num_heads=self.num_heads,
               dropout=self.dropout,
-              drop_path_rate=self.drop_path_rate)(carry, deterministic)
+              drop_path_rate=self.drop_path_rate/(self.depth-1),
+            )(carry, deterministic)
       for lyr in range(self.depth):
         out[f"block{lyr:02d}"] = jax.tree.map(lambda o, l=lyr: o[l], scan_out)
       x = carry[0] if isinstance(carry, tuple) else carry

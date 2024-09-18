@@ -1214,7 +1214,7 @@ def startstop_prof_at_steps(
 class BigVisionMetricWriter:
   """A class for logging metrics with local accumulation and less frequent GCS writing."""
 
-  def __init__(self, xid=-1, wid=-1, workdir=None, config=None, gcs_write_frequency=1000):
+  def __init__(self, xid=-1, wid=-1, workdir=None, config=None, gcs_write_frequency=200):
     self.step_start(0)
     if jax.process_index() != 0: return  # Only one host shall write stuff.
 

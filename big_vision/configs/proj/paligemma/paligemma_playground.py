@@ -128,7 +128,7 @@ def get_config(arg=None):
   c.model.llm = dict(
     variant=c.llm_variant,scan=True, dtype=c.dtype, 
     dropout=c.llm_dropout, lyrs_frozen=-1, pool=c.llm_pool, projection=c.llm_projection,
-    # drop_path_rate=c.drop_path_rate
+    drop_path_rate=c.drop_path_rate, remat_policy='nothing_saveable',
   )
   if c.llm_clean_vocab == False:
     c.model['llm']['vocab_size'] = 256_000 + 1024 + 128

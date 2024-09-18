@@ -34,6 +34,7 @@ def _get_config(model):
   config.pool = model.pool
   config.projection = model.projection
   config.proj_bias = model.proj_bias
+  config.drop_path_rate = model.drop_path_rate
   return config
 
 
@@ -66,6 +67,7 @@ class Model(nn.Module):
   pool: str = "none"
   projection: bool = False
   proj_bias: bool = False
+  drop_path_rate: float = 0.0
 
   def setup(self):
     # The parent+name avoids an unnecessary nesting in params pytree.
