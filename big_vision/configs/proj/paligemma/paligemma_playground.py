@@ -171,6 +171,17 @@ def get_config(arg=None):
       llm_ckpt = None
       c.model_init = None
       c.model_load = {}
+    case 'scratch-partial_frozen':
+      llm_ckpt = None
+      c.model_init = None
+      c.model_load = {}
+      c.model.llm['lyrs_frozen'] = int(lyrs_frozen)
+      assert c.freeze_llm==False, "scratch-partial_frozen is for unfreezing"
+      c.schedule = [
+        ('img/.*', None if c.freeze_vit else sched),
+        ('llm/layers/frozen/.*', None),
+        ('.*', sched),
+      ]
     case _:
       raise ValueError(f"Unknown llm_ckpt: {c.llm_ckpt}")
   
