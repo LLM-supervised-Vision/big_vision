@@ -274,7 +274,7 @@ class Decoder(nn.Module):
     if targets is not None: 
       # text projection
       contrastive_ztxt = nn.LayerNorm(name="LayerNormCls")(y[:,-1,:])
-      captioning_ztxt = y[:,:-1,:]
+      captioning_ztxt = nn.LayerNorm(name="LayerNormCap")(y[:,:-1,:])
       logging.info(f"{logging_prefix} Decoder: output contrastive_ztxt.shape: %s", contrastive_ztxt.shape)
       logging.info(f"{logging_prefix} Decoder: output captioning_ztxt.shape: %s", captioning_ztxt.shape)
       return contrastive_ztxt, captioning_ztxt
@@ -417,18 +417,18 @@ class Model(nn.Module):
     else: 
       # Prepare the unimodal decoder mask
       unimodal_decoder_mask = nn.make_causal_mask(jnp.empty((targets.shape[0], targets.shape[1]+1))) # [B,1,L+1,L+1]
-      cls_mask = unimodal_decoder_mask[:,:,-1,:-1].squeeze() # [B,L]
+      # cls_mask = unimodal_decoder_mask[:,:,-1,:-1].squeeze() # [B,L]
 
-      # new_cls_mask = jnp.concatenate([new_cls_mask, jnp.ones((new_cls_mask.shape[0], 1))], axis=1) # [B,L+1]
-      # new_cls_mask = new_cls_mask.reshape((new_cls_mask.shape[0], 1, 1, new_cls_mask.shape[1])) # [B,1,1,L+1]
-      # zeros = jnp.zeros((new_cls_mask.shape[0], 1, new_cls_mask.shape[3]-1, new_cls_mask.shape[3])) # [B,1,L,L+1]
-      # new_cls_mask = jnp.concatenate([zeros, new_cls_mask], axis=2) # [B,1,L+1,L+1]
-      new_cls_mask = jnp.where(targets == 0, 0, cls_mask) # [B,L]
-      new_cls_mask = jnp.pad(new_cls_mask, ((0,0),(0,1)), mode='constant', constant_values=1) # [B,L+1]
-      new_cls_mask = new_cls_mask[:,None,None,:] # [B,1,1,L+1]
-      new_cls_mask = jnp.pad(new_cls_mask, ((0,0),(0,0),(targets.shape[1],0),(0,0)), mode='constant', constant_values=0)
+      # # new_cls_mask = jnp.concatenate([new_cls_mask, jnp.ones((new_cls_mask.shape[0], 1))], axis=1) # [B,L+1]
+      # # new_cls_mask = new_cls_mask.reshape((new_cls_mask.shape[0], 1, 1, new_cls_mask.shape[1])) # [B,1,1,L+1]
+      # # zeros = jnp.zeros((new_cls_mask.shape[0], 1, new_cls_mask.shape[3]-1, new_cls_mask.shape[3])) # [B,1,L,L+1]
+      # # new_cls_mask = jnp.concatenate([zeros, new_cls_mask], axis=2) # [B,1,L+1,L+1]
+      # new_cls_mask = jnp.where(targets == 0, 0, cls_mask) # [B,L]
+      # new_cls_mask = jnp.pad(new_cls_mask, ((0,0),(0,1)), mode='constant', constant_values=1) # [B,L+1]
+      # new_cls_mask = new_cls_mask[:,None,None,:] # [B,1,1,L+1]
+      # new_cls_mask = jnp.pad(new_cls_mask, ((0,0),(0,0),(targets.shape[1],0),(0,0)), mode='constant', constant_values=0)
 
-      unimodal_decoder_mask = jnp.concatenate((unimodal_decoder_mask[:,:,:-1,:], new_cls_mask[:,:,-1:,:]), axis=-2)
+      # unimodal_decoder_mask = jnp.concatenate((unimodal_decoder_mask[:,:,:-1,:], new_cls_mask[:,:,-1:,:]), axis=-2)
       logging.info("decode: unimodal_decoder_mask.shape: %s", unimodal_decoder_mask.shape)
 
       # Prepare the multimodal decoder mask

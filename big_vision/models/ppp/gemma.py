@@ -44,6 +44,7 @@ import numpy as np
 import orbax.checkpoint
 from big_vision.models.vit import MAPHead
 
+import logging
 
 def get_config(variant):
   """Returns config for specified gemma variant."""
@@ -329,6 +330,19 @@ class FeedForward(nn.Module):
     return outputs
 
 
+def drop_path(x, drop_prob: float = 0.0, deterministic: bool = False):
+    keep_prob = 1 - drop_prob
+    shape = (x.shape[0],) + (1,) * (x.ndim - 1)
+    
+    rng = jax.random.PRNGKey(0)  # You might want to pass this as an argument for better randomness
+    random_tensor = jax.random.bernoulli(rng, p=keep_prob, shape=shape)
+    random_tensor = jnp.asarray(random_tensor, dtype=x.dtype)
+    random_tensor = random_tensor / jnp.where(keep_prob > 0, keep_prob, 1.)
+
+    output = jnp.where(deterministic, x, x * random_tensor)
+    return output
+
+
 class Block(nn.Module):
   """Transformer block."""
 
@@ -342,6 +356,7 @@ class Block(nn.Module):
   dropout_bdims: tuple[int, ...] = ()
   cache_dtype: str | None = None
   dtype: str = "float32"
+  drop_path_rate: float = 0.0
 
   def setup(self):
     self.pre_attention_norm = RMSNorm(dtype=self.dtype)
@@ -360,20 +375,35 @@ class Block(nn.Module):
     else:
       self.drop = lambda x, _: x
 
-  def __call__(self, x, unused_scan_arg, positions, attn_mask,
+  def __call__(self, carry, unused_scan_arg, positions, attn_mask,
                decode, deterministic=True):
+    if isinstance(carry, tuple):
+      assert len(carry) == 2, f"Expected 2 elements in carry, got {len(carry)}"
+      x, block_id = carry
+      drop_path_rate = self.drop_path_rate * block_id
+    else:
+      x = carry
+      drop_path_rate = self.drop_path_rate
+
+    out = {}
+    out['drop_path_rate'] = drop_path_rate
     x = nn.with_logical_constraint(x, ("act_batch", "act_len", "act_emb"))
     inputs_normalized = self.pre_attention_norm(x)
-    attn_output = self.attn(inputs_normalized, positions, attn_mask,
+    attn_output = out['attn'] = self.attn(inputs_normalized, positions, attn_mask,
                             decode, deterministic)
     attn_output = self.drop(attn_output, deterministic)
-    attn_output += x
+    attn_output = out['attn_drop_path'] = drop_path(attn_output, drop_path_rate, deterministic)
+    attn_output = out['attn_output'] = attn_output + x
+
     residual = attn_output
     attn_output = self.pre_ffw_norm(attn_output)
-    outputs = self.mlp(attn_output)
+    outputs = out['mlp'] = self.mlp(attn_output)
     outputs = self.drop(outputs, deterministic)
-    outputs = residual + outputs
-    return outputs, unused_scan_arg
+    outputs = out['mlp_drop_path'] = drop_path(outputs, drop_path_rate, deterministic)
+    outputs = out['+mlp'] =  residual + outputs
+
+    if isinstance(carry, tuple): return (outputs, block_id + 1), (unused_scan_arg, out)
+    return outputs, (unused_scan_arg, out)
 
 
 class Model(nn.Module):
@@ -406,6 +436,7 @@ class Model(nn.Module):
   pool: str = "none"
   projection: bool = False
   proj_bias: bool = False
+  drop_path_rate: float = 0.0
 
   @nn.compact
   def __call__(
@@ -493,6 +524,7 @@ class Model(nn.Module):
         dropout_bdims=self.dropout_bdims,
         cache_dtype=self.cache_dtype,
         dtype=self.dtype,
+        drop_path_rate=self.drop_path_rate/(self.depth-1), # will multiply by block_id later in Block
     )
     layers = self.scope.push("layers")
     if self.scan:
@@ -536,9 +568,12 @@ class Model(nn.Module):
           for layer in range(self.depth)
       ]
     unused_scan_arg = ()
-    for block in blocks:
-      x, unused_scan_arg = block(
-          x, unused_scan_arg, positions, mask, decode, deterministic)
+    for block_id, block in enumerate(blocks):
+      (x,final_block_id), (unused_scan_arg, scan_out) = block(
+          (x,block_id), unused_scan_arg, positions, mask, decode, deterministic)
+      logging.info(f"gemma: block_id: {block_id}, final_block_id: {final_block_id}")
+    for lyr in range(self.depth):
+      out[f"block{lyr:02d}"] = jax.tree.map(lambda o, l=lyr: o[l], scan_out)
 
     assert x.dtype == jnp.dtype(self.embed_dtype)  # Sanity check.
     out["encoded"] = x

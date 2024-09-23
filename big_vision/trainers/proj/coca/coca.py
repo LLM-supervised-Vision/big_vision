@@ -142,7 +142,7 @@ def main(argv):
     if jax.process_index() == 0:
       info("%s", note)
 
-  mw = u.BigVisionMetricWriter(xid, wid, workdir, config)
+  mw = u.BigVisionMetricWriter(xid, wid, workdir, config,gcs_write_frequency=100)
   # Initialize wandb.
   if config.get("wandb", False) and jax.process_index() == 0:
     wandb.login(key='97c3b77fabd233d22d7b9a71319fce93f7400469')

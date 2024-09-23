@@ -128,7 +128,7 @@ def get_config(arg=None):
   c.model.llm = dict(
     variant=c.llm_variant,scan=True, dtype=c.dtype, 
     dropout=c.llm_dropout, lyrs_frozen=-1, pool=c.llm_pool, projection=c.llm_projection,
-    # drop_path_rate=c.drop_path_rate
+    drop_path_rate=c.drop_path_rate, remat_policy='nothing_saveable',
   )
   if c.llm_clean_vocab == False:
     c.model['llm']['vocab_size'] = 256_000 + 1024 + 128
@@ -171,6 +171,17 @@ def get_config(arg=None):
       llm_ckpt = None
       c.model_init = None
       c.model_load = {}
+    case 'scratch-partial_frozen':
+      llm_ckpt = None
+      c.model_init = None
+      c.model_load = {}
+      c.model.llm['lyrs_frozen'] = int(lyrs_frozen)
+      assert c.freeze_llm==False, "scratch-partial_frozen is for unfreezing"
+      c.schedule = [
+        ('img/.*', None if c.freeze_vit else sched),
+        ('llm/layers/frozen/.*', None),
+        ('.*', sched),
+      ]
     case _:
       raise ValueError(f"Unknown llm_ckpt: {c.llm_ckpt}")
   
