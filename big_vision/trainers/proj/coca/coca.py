@@ -312,10 +312,10 @@ def main(argv):
 #                                                                              #
 ################################################################################
 
-  @functools.partial(
-      jax.jit,
-      donate_argnums=(0,),
-      out_shardings=(train_state_sharding, repl_sharding))
+  # @functools.partial(
+  #     jax.jit,
+  #     donate_argnums=(0,),
+  #     out_shardings=(train_state_sharding, repl_sharding))
   def update_fn(train_state, batch):
     """Update step."""
 
@@ -483,7 +483,8 @@ def main(argv):
     with jax.profiler.StepTraceAnnotation("train_step", step_num=step):
       with u.chrono.log_timing("z/secs/update0", noop=step > first_step + 1):
         with mesh, nn.logical_axis_rules([("act_batch", ("replica", "fsdp"))]):  # pytype: disable=wrong-arg-types
-          train_state, measurements = update_fn(train_state, batch)
+          with jax.transfer_guard('allow'): train_state, measurements = update_fn(train_state, batch)
+          # train_state, measurements = update_fn(train_state, batch)
           if config.get("wandb", False) and jax.process_index() == 0: wandb.log(measurements)
 
     # On the first host, let's always profile a handful of early steps.

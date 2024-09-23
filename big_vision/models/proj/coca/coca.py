@@ -23,6 +23,10 @@ import jax
 import jax.numpy as jnp
 import logging
 
+oc_fc_init = nn.initializers.variance_scaling(1.0, "fan_avg", "normal")
+oc_kernel_init = nn.initializers.variance_scaling(1.0, "fan_in", "normal")
+oc_bias_init = nn.initializers.zeros
+oc_proj_init_transform = lambda depth: nn.initializers.variance_scaling((2*depth)**-0.5, "fan_in", "normal")
 
 def shift_right(x, axis=1, constant_values=0):
   """Shift to the right on given axis with padding value 0."""
@@ -40,6 +44,8 @@ class MlpBlock(nn.Module):
   dropout: float = 0.0
   use_bias: bool = True
   dtype_mm: str = "float32"
+  num_layers: int = 6
+  oc_init: bool = False
 
   @nn.compact
   def __call__(self, x, deterministic=True):
@@ -50,9 +56,11 @@ class MlpBlock(nn.Module):
     )
 
     n, l, d = x.shape  # pylint: disable=unused-variable
+    if self.oc_init: inits = dict(kernel_init=oc_kernel_init, bias_init=oc_fc_init)
     x = nn.Dense(self.mlp_dim or 4 * d, dtype=self.dtype_mm, use_bias=self.use_bias, **inits)(x)
     x = nn.gelu(x)
     x = nn.Dropout(rate=self.dropout)(x, deterministic)
+    if self.oc_init: inits = dict(kernel_init=oc_proj_init_transform(self.num_layers), bias_init=oc_fc_init)
     x = nn.Dense(d, dtype=self.dtype_mm, use_bias=self.use_bias, **inits)(x)
     return x
 
@@ -66,6 +74,7 @@ class EncoderDecoderBlock(nn.Module):
   use_bias: bool = True
   dtype_mm: str = "float32"
   normalize_qk: bool = False
+  num_layers: int = 6
 
   @nn.compact
   def __call__(self, targets, encoded, decoder_mask=None, deterministic=True):
@@ -111,7 +120,7 @@ class EncoderDecoderBlock(nn.Module):
     z = wlc(nn.LayerNorm(name="LayerNorm3", use_bias=self.use_bias)(y))
     z = wlc(MlpBlock(
         mlp_dim=self.mlp_dim, dropout=self.dropout_rate, use_bias=self.use_bias,
-        dtype_mm=self.dtype_mm,
+        dtype_mm=self.dtype_mm, num_layers=self.num_layers, 
         name="MLP")(z, deterministic=deterministic))
 
     return wlc(y + z), None
@@ -257,7 +266,7 @@ class Decoder(nn.Module):
                             length=self.num_layers)
       # 3. fprop
       y, _ = dec_scanned(num_heads=self.num_heads, mlp_dim=self.mlp_dim,
-                         dtype_mm=self.dtype_mm,
+                         dtype_mm=self.dtype_mm, num_layers=self.num_layers,
                          dropout_rate=self.dropout_rate, decode=decode,
                          use_bias=self.use_bias, name="EncDecBlock")(
                              y, encoded, decoder_mask, deterministic)
@@ -265,7 +274,7 @@ class Decoder(nn.Module):
       for lyr in range(self.num_layers):
         y, _ = EncoderDecoderBlock(
             num_heads=self.num_heads, mlp_dim=self.mlp_dim,
-            dtype_mm=self.dtype_mm,
+            dtype_mm=self.dtype_mm, num_layers=self.num_layers,
             dropout_rate=self.dropout_rate, decode=decode,
             use_bias=self.use_bias, name=f"EncDecBlock{lyr}")(
                 y, encoded, decoder_mask=decoder_mask,

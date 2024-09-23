@@ -41,7 +41,7 @@ def get_config(arg=None):
 
   res = 224
   patch_size = 16
-  max_text_tokens = 64
+  max_text_tokens = 12
   add_bos = False
 
   pp_image = (f'resize({res})|value_range(-1,1)')
