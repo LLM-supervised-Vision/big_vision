@@ -150,7 +150,7 @@ def get_config(arg=None):
   config.grad_clip_norm = 1.0
   config.label_smoothing = 0.0
 
-  config.warmup_steps = max(int(config.warmup_ratio * config.total_steps), 100)
+  if config.warmup_ratio>0.0: config.warmup_steps = max(int(config.warmup_ratio * config.total_steps), 100)
   schedule = [('.*',dict(decay_type='cosine',
                   warmup_steps=config.warmup_steps
                   if not config.runlocal else 5))]
