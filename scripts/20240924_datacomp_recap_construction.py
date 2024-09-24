@@ -7,6 +7,8 @@ from io import BytesIO
 from PIL import Image
 from tqdm import tqdm
 import argparse
+import concurrent.futures
+import multiprocessing
 
 class DatacompRecap(tfds.core.GeneratorBasedBuilder):
     VERSION = tfds.core.Version('1.0.0')
@@ -18,6 +20,7 @@ class DatacompRecap(tfds.core.GeneratorBasedBuilder):
         tfds.core.BuilderConfig(name="1k", description="Dataset with 1,000 samples"),
         tfds.core.BuilderConfig(name="10k", description="Dataset with 10,000 samples"),
         tfds.core.BuilderConfig(name="1M", description="Dataset with 1,000,000 samples"),
+        tfds.core.BuilderConfig(name="100M", description="Dataset with 100,000,000 samples"),
     ]
 
     def _info(self) -> tfds.core.DatasetInfo:
@@ -46,26 +49,39 @@ class DatacompRecap(tfds.core.GeneratorBasedBuilder):
             "1k": 1000,
             "10k": 10000,
             "1M": 1000000,
+            "100M": 100000000,
         }
         num_samples = config_to_samples[self.builder_config.name]
         
         ds = load_dataset("UCSC-VLAA/Recap-DataComp-1B", split="train", streaming=True)
         
-        for i, sample in enumerate(tqdm(ds.take(num_samples), total=num_samples, desc="Generating samples")):
-            image_data, width, height = self._download_image(sample['url'])
-            if image_data is not None:
-                yield i, {
-                    'image': image_data,
-                    'url': sample['url'],
-                    're_caption': sample['re_caption'],
-                    'org_caption': sample['org_caption'],
-                    'width': width,
-                    'height': height,
-                }
+        with concurrent.futures.ThreadPoolExecutor(max_workers=multiprocessing.cpu_count() * 2) as executor:
+            futures = []
+            for i, sample in enumerate(tqdm(ds.take(num_samples), total=num_samples, desc="Submitting tasks")):
+                future = executor.submit(self._process_sample, i, sample)
+                futures.append(future)
+            
+            for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Processing samples"):
+                result = future.result()
+                if result is not None:
+                    yield result
+
+    def _process_sample(self, index, sample):
+        image_data, width, height = self._download_image(sample['url'])
+        if image_data is not None:
+            return index, {
+                'image': image_data,
+                'url': sample['url'],
+                're_caption': sample['re_caption'],
+                'org_caption': sample['org_caption'],
+                'width': width,
+                'height': height,
+            }
+        return None
 
     def _download_image(self, url):
         try:
-            response = requests.get(url, timeout=10)
+            response = requests.get(url, timeout=5)
             response.raise_for_status()
             img = Image.open(BytesIO(response.content))
             img = img.convert('RGB')  # Convert to RGB to ensure consistency
@@ -76,7 +92,7 @@ class DatacompRecap(tfds.core.GeneratorBasedBuilder):
         except Exception as e:
             print(f"Error downloading {url}: {e}")
             return None, None, None
-        
+
 def main(config_name, local_data_dir, gcs_data_dir, gcs_tfds):
     # Create the builder
     data_dir = gcs_data_dir if gcs_tfds else local_data_dir
@@ -88,7 +104,7 @@ def main(config_name, local_data_dir, gcs_data_dir, gcs_tfds):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process DataComp-Recap-1B dataset")
-    parser.add_argument("--config", type=str, choices=["10", "1k", "10k", "1M"], default="10", help="Configuration to use")
+    parser.add_argument("--config", type=str, choices=["10", "1k", "10k", "1M", "100M"], default="10", help="Configuration to use")
     parser.add_argument("--local_data_dir", type=str, default="/home/austinwang/tensorflow_datasets", help="Local storage path")
     parser.add_argument("--gcs_data_dir", type=str, default="gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets", help="GCS path")
     parser.add_argument("--gcs_tfds", type=bool, default=False, help="Whether to store the TFDS dataset in GCS")
