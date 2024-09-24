@@ -7,9 +7,6 @@ from io import BytesIO
 from PIL import Image
 from tqdm import tqdm
 import argparse
-# from google.cloud import storage
-
-# Ensure you have the necessary permissions and have authenticated with Google Cloud
 
 def download_image(url):
     try:
@@ -69,13 +66,16 @@ class DatacompRecap(tfds.core.GeneratorBasedBuilder):
         '1.0.0': 'Initial release.',
     }
     BUILDER_CONFIGS = [
-        tfds.core.BuilderConfig(name="default"),
+        tfds.core.BuilderConfig(name="100", description="Dataset with 100 samples"),
+        tfds.core.BuilderConfig(name="1k", description="Dataset with 1,000 samples"),
+        tfds.core.BuilderConfig(name="10k", description="Dataset with 10,000 samples"),
+        tfds.core.BuilderConfig(name="1M", description="Dataset with 1,000,000 samples"),
     ]
 
     def _info(self) -> tfds.core.DatasetInfo:
         return tfds.core.DatasetInfo(
             builder=self,
-            description="DataComp-Recap-1B dataset",
+            description=f"DataComp-Recap-1B dataset with {self.builder_config.name} samples",
             features=tfds.features.FeaturesDict({
                 'image': tfds.features.Image(),
                 'url': tfds.features.Text(),
@@ -89,7 +89,7 @@ class DatacompRecap(tfds.core.GeneratorBasedBuilder):
 
     def _split_generators(self, dl_manager: tfds.download.DownloadManager):
         return {
-            'train': self._generate_examples(os.path.join(dl_manager._manual_dir, f"datacomp_recap_{self.num_samples}.tfrecord")),
+            'train': self._generate_examples(os.path.join(dl_manager.manual_dir, f"datacomp_recap_{self.builder_config.name}.tfrecord")),
         }
 
     def _generate_examples(self, filepath):
@@ -107,28 +107,36 @@ class DatacompRecap(tfds.core.GeneratorBasedBuilder):
                 'height': feature['height'].int64_list.value[0],
             }
 
-def main(num_samples, local_data_dir, gcs_data_dir, gcs_tfds):
+def main(config_name, local_data_dir, gcs_data_dir, gcs_tfds):
+    # Map config names to number of samples
+    config_to_samples = {
+        "100": 100,
+        "1k": 1000,
+        "10k": 10000,
+        "1M": 1000000,
+    }
+    num_samples = config_to_samples[config_name]
+
     # Step 1: Construct TFRecord files
     ds = load_dataset("UCSC-VLAA/Recap-DataComp-1B", split="train", streaming=True)
-    tfrecord_file = os.path.join(local_data_dir, "downloads", "manual", f"datacomp_recap_{num_samples}.tfrecord")
+    tfrecord_file = os.path.join(local_data_dir, "downloads", "manual", f"datacomp_recap_{config_name}.tfrecord")
     convert_to_tfrecord(ds, tfrecord_file, num_samples)
 
     # Step 2: Construct TFDS dataset
     # Create the builder
-    builder = DatacompRecap(data_dir=gcs_data_dir if gcs_tfds else local_data_dir)
-    builder.num_samples = num_samples
+    builder = DatacompRecap(config=config_name, data_dir=gcs_data_dir if gcs_tfds else local_data_dir)
     
     # Prepare the dataset
-    builder.download_and_prepare() # download_config=download_config)
+    builder.download_and_prepare()
 
-    print(f"Dataset has been prepared and stored in {local_data_dir}")
+    print(f"Dataset has been prepared and stored in {gcs_data_dir if gcs_tfds else local_data_dir}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process DataComp-Recap-1B dataset")
-    parser.add_argument("--num_samples", type=int, default=10000, help="Number of samples to process")
+    parser.add_argument("--config", type=str, choices=["100", "1k", "10k", "1M"], default="100", help="Configuration to use")
     parser.add_argument("--local_data_dir", type=str, default="/home/austinwang/tensorflow_datasets", help="Local storage path")
     parser.add_argument("--gcs_data_dir", type=str, default="gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets", help="GCS path")
     parser.add_argument("--gcs_tfds", type=bool, default=False, help="Whether to store the TFDS dataset in GCS")
     args = parser.parse_args()
 
-    main(args.num_samples, args.local_data_dir, args.gcs_data_dir, args.gcs_tfds)
+    main(args.config, args.local_data_dir, args.gcs_data_dir, args.gcs_tfds)
