@@ -248,7 +248,7 @@ def main(argv):
     # We jit this, such that the arrays are created on the CPU, not device[0].
     sched_fns_cpu = [u.jit_cpu()(sched_fn) for sched_fn in sched_fns]
 
-    num_params = sum(np.prod(p.shape) for p in jax.tree_leaves(params_shape))
+    num_params = sum(np.prod(p.shape) for p in jax.tree.leaves(params_shape))
     mw.measure("num_params", num_params)
 
 ################################################################################
@@ -363,11 +363,11 @@ def main(argv):
     updates, opt = tx.update(grads, opt, params)
     params = optax.apply_updates(params, updates)
 
-    gs = jax.tree_leaves(bv_optax.replace_frozen(config.schedule, grads, 0.))
+    gs = jax.tree.leaves(bv_optax.replace_frozen(config.schedule, grads, 0.))
     measurements["l2_grads"] = jnp.sqrt(sum([jnp.sum(g * g) for g in gs]))
-    ps = jax.tree_leaves(params)
+    ps = jax.tree.leaves(params)
     measurements["l2_params"] = jnp.sqrt(sum([jnp.sum(p * p) for p in ps]))
-    us = jax.tree_leaves(updates)
+    us = jax.tree.leaves(updates)
     measurements["l2_updates"] = jnp.sqrt(sum([jnp.sum(u * u) for u in us]))
     step_count = bv_optax.get_count(opt, jittable=True)
     lr_schedule = sched_fns[0](u.put_cpu(step_count))
