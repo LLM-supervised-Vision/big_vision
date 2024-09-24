@@ -68,6 +68,9 @@ class DatacompRecap(tfds.core.GeneratorBasedBuilder):
     RELEASE_NOTES = {
         '1.0.0': 'Initial release.',
     }
+    BUILDER_CONFIGS = [
+        tfds.core.BuilderConfig(name="default"),
+    ]
 
     def _info(self) -> tfds.core.DatasetInfo:
         return tfds.core.DatasetInfo(
@@ -86,7 +89,7 @@ class DatacompRecap(tfds.core.GeneratorBasedBuilder):
 
     def _split_generators(self, dl_manager: tfds.download.DownloadManager):
         return {
-            'train': self._generate_examples(os.path.join(dl_manager._manual_dir, f"{self.builder_config.name}.tfrecord")),
+            'train': self._generate_examples(os.path.join(dl_manager._manual_dir, f"datacomp_recap_{self.num_samples}.tfrecord")),
         }
 
     def _generate_examples(self, filepath):
@@ -111,16 +114,9 @@ def main(num_samples, local_data_dir, gcs_data_dir, gcs_tfds):
     convert_to_tfrecord(ds, tfrecord_file, num_samples)
 
     # Step 2: Construct TFDS dataset
-    data_dir = gcs_data_dir if gcs_tfds else local_data_dir
-
-    # Create a temporary builder_config
-    builder_config = tfds.core.BuilderConfig(name=f"datacomp_recap_{num_samples}", version=tfds.core.Version("1.0.0"))
-    
-    # Create the builder with the temporary config
-    builder = DatacompRecap(config=builder_config, data_dir=data_dir)
-    
-    # Set manual_dir to point to the local TFRecord file
-    # download_config = tfds.download.DownloadConfig(manual_dir=local_data_dir)
+    # Create the builder
+    builder = DatacompRecap(data_dir=gcs_data_dir if gcs_tfds else local_data_dir)
+    builder.num_samples = num_samples
     
     # Prepare the dataset
     builder.download_and_prepare() # download_config=download_config)
