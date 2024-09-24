@@ -17,9 +17,11 @@ class DatacompRecap(tfds.core.GeneratorBasedBuilder):
     }
     BUILDER_CONFIGS = [
         tfds.core.BuilderConfig(name="10", description="Dataset with 10 samples"),
+        tfds.core.BuilderConfig(name="100", description="Dataset with 100 samples"),
         tfds.core.BuilderConfig(name="1k", description="Dataset with 1,000 samples"),
         tfds.core.BuilderConfig(name="10k", description="Dataset with 10,000 samples"),
         tfds.core.BuilderConfig(name="1M", description="Dataset with 1,000,000 samples"),
+        tfds.core.BuilderConfig(name="10M", description="Dataset with 10,000,000 samples"),
         tfds.core.BuilderConfig(name="100M", description="Dataset with 100,000,000 samples"),
     ]
 
@@ -46,9 +48,11 @@ class DatacompRecap(tfds.core.GeneratorBasedBuilder):
     def _generate_examples(self):
         config_to_samples = {
             "10": 10,
+            "100": 100,
             "1k": 1000,
             "10k": 10000,
             "1M": 1000000,
+            "10M": 10000000,
             "100M": 100000000,
         }
         num_samples = config_to_samples[self.builder_config.name]
@@ -104,7 +108,7 @@ def main(config_name, local_data_dir, gcs_data_dir, gcs_tfds):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process DataComp-Recap-1B dataset")
-    parser.add_argument("--config", type=str, choices=["10", "1k", "10k", "1M", "100M"], default="10", help="Configuration to use")
+    parser.add_argument("--config", type=str, choices=["10", "100", "1k", "10k", "1M", "10M", "100M"], default="10", help="Configuration to use")
     parser.add_argument("--local_data_dir", type=str, default="/home/austinwang/tensorflow_datasets", help="Local storage path")
     parser.add_argument("--gcs_data_dir", type=str, default="gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets", help="GCS path")
     parser.add_argument("--gcs_tfds", type=bool, default=False, help="Whether to store the TFDS dataset in GCS")
