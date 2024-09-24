@@ -27,6 +27,7 @@ def get_config(arg=None):
                           dtype='float32',
                           dec_lyr=12,
                           masked_pred_prob=0.0,
+                          decoder_bias=True,
                           res=224,
                           scan=True,
                           eval_only=False,
@@ -55,6 +56,7 @@ def get_config(arg=None):
               f'{tokenizer("text", "labels")}|keep("image", "labels")')
   config.input.pp = pp_laion
   config.input.data = dict(name='laion400m/images', split='train', data_dir='gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets')  # num_examples=379,600,897
+  # config.input.data = dict(name='datacomp_recap/10k', split='train', data_dir='gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets')  # num_examples=10
   config.input.shuffle_buffer_size = shuffle_buffer_size
 
   pp_coco = (f'decode|{pp_image}|'
@@ -134,7 +136,7 @@ def get_config(arg=None):
   config.model.dec_dropout_rate = 0.0
   config.model.masked_pred_prob = config.masked_pred_prob
   config.model.masking_ratio = 1.0
-  config.model.decoder_bias = True
+  config.model.decoder_bias = config.decoder_bias
 
   config.model.scan = config.scan
   config.model.dtype_mm = config.dtype # 'bfloat16'

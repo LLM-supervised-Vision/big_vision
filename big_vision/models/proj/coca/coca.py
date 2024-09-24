@@ -274,7 +274,7 @@ class Decoder(nn.Module):
     if targets is not None: 
       # text projection
       contrastive_ztxt = nn.LayerNorm(name="LayerNormCls")(y[:,-1,:])
-      captioning_ztxt = nn.LayerNorm(name="LayerNormCap")(y[:,:-1,:])
+      captioning_ztxt = y[:,:-1,:]
       logging.info(f"{logging_prefix} Decoder: output contrastive_ztxt.shape: %s", contrastive_ztxt.shape)
       logging.info(f"{logging_prefix} Decoder: output captioning_ztxt.shape: %s", captioning_ztxt.shape)
       return contrastive_ztxt, captioning_ztxt
