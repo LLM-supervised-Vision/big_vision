@@ -63,7 +63,7 @@ def convert_to_tfrecord(dataset, output_file, num_samples):
             if i >= num_samples - 1:
                 break
 
-class DataCompRecap1B(tfds.core.GeneratorBasedBuilder):
+class DatacompRecap(tfds.core.GeneratorBasedBuilder):
     VERSION = tfds.core.Version('1.0.0')
     RELEASE_NOTES = {
         '1.0.0': 'Initial release.',
@@ -85,9 +85,8 @@ class DataCompRecap1B(tfds.core.GeneratorBasedBuilder):
         )
 
     def _split_generators(self, dl_manager: tfds.download.DownloadManager):
-        import pdb; pdb.set_trace()
         return {
-            'train': self._generate_examples(self.tfrecord_file),
+            'train': self._generate_examples(os.path.join(dl_manager._manual_dir, f"{self.builder_config.name}.tfrecord")),
         }
 
     def _generate_examples(self, filepath):
@@ -105,43 +104,35 @@ class DataCompRecap1B(tfds.core.GeneratorBasedBuilder):
                 'height': feature['height'].int64_list.value[0],
             }
 
-# def upload_to_gcs(local_path, bucket_name, gcs_path):
-#     client = storage.Client()
-#     bucket = client.bucket(bucket_name)
-#     blob = bucket.blob(gcs_path)
-#     blob.upload_xfrom_filename(local_path)
-#     print(f"File {local_path} uploaded to {gcs_path}.")
-
-def main(num_samples, local_storage_path, gcs_bucket, gcs_path):
+def main(num_samples, local_data_dir, gcs_data_dir, gcs_tfds):
     # Step 1: Construct TFRecord files
     ds = load_dataset("UCSC-VLAA/Recap-DataComp-1B", split="train", streaming=True)
-    tfrecord_file = os.path.join(local_storage_path, f"recap_datacomp_{num_samples}.tfrecord")
+    tfrecord_file = os.path.join(local_data_dir, "downloads", "manual", f"datacomp_recap_{num_samples}.tfrecord")
     convert_to_tfrecord(ds, tfrecord_file, num_samples)
 
     # Step 2: Construct TFDS dataset
-    DataCompRecap1B.tfrecord_file = tfrecord_file  # Set the TFRecord file path
-    builder = DataCompRecap1B(data_dir=local_storage_path)
-    builder.download_and_prepare()
+    data_dir = gcs_data_dir if gcs_tfds else local_data_dir
 
-    # # Step 3: Upload to Google Cloud Storage
-    # gcs_tfrecord_path = os.path.join(gcs_path, f"recap_datacomp_{num_samples}.tfrecord")
-    # upload_to_gcs(tfrecord_file, gcs_bucket, gcs_tfrecord_path)
+    # Create a temporary builder_config
+    builder_config = tfds.core.BuilderConfig(name=f"datacomp_recap_{num_samples}", version=tfds.core.Version("1.0.0"))
+    
+    # Create the builder with the temporary config
+    builder = DatacompRecap(config=builder_config, data_dir=data_dir)
+    
+    # Set manual_dir to point to the local TFRecord file
+    # download_config = tfds.download.DownloadConfig(manual_dir=local_data_dir)
+    
+    # Prepare the dataset
+    builder.download_and_prepare() # download_config=download_config)
 
-    # # Upload TFDS files
-    # tfds_dir = os.path.join(local_storage_path, "datacomp_recap_1b")
-    # for root, _, files in os.walk(tfds_dir):
-    #     for file in files:
-    #         local_file_path = os.path.join(root, file)
-    #         relative_path = os.path.relpath(local_file_path, local_storage_path)
-    #         gcs_file_path = os.path.join(gcs_path, relative_path)
-    #         upload_to_gcs(local_file_path, gcs_bucket, gcs_file_path)
+    print(f"Dataset has been prepared and stored in {local_data_dir}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process DataComp-Recap-1B dataset")
     parser.add_argument("--num_samples", type=int, default=10000, help="Number of samples to process")
-    parser.add_argument("--local_storage_path", type=str, default="/home/austinwang/tensorflow_datasets", help="Local storage path")
-    parser.add_argument("--gcs_bucket", type=str, default="us-central2-storage", help="GCS bucket name")
-    parser.add_argument("--gcs_path", type=str, default="tensorflow_datasets/tensorflow_datasets/datacomp_recap", help="GCS path")
+    parser.add_argument("--local_data_dir", type=str, default="/home/austinwang/tensorflow_datasets", help="Local storage path")
+    parser.add_argument("--gcs_data_dir", type=str, default="gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets", help="GCS path")
+    parser.add_argument("--gcs_tfds", type=bool, default=False, help="Whether to store the TFDS dataset in GCS")
     args = parser.parse_args()
 
-    main(args.num_samples, args.local_storage_path, args.gcs_bucket, args.gcs_path)
+    main(args.num_samples, args.local_data_dir, args.gcs_data_dir, args.gcs_tfds)
