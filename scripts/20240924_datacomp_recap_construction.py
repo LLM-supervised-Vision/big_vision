@@ -71,7 +71,7 @@ class DatacompRecap(tfds.core.GeneratorBasedBuilder):
                     yield result
 
     def _process_sample(self, index, sample):
-        image_data, width, height = self._download_image(sample['url'])
+        image_data, width, height = self._download_image(sample['url'], index)
         if image_data is not None:
             return index, {
                 'image': image_data,
@@ -83,7 +83,7 @@ class DatacompRecap(tfds.core.GeneratorBasedBuilder):
             }
         return None
 
-    def _download_image(self, url):
+    def _download_image(self, url, index):
         try:
             response = requests.get(url, timeout=5)
             response.raise_for_status()
@@ -94,7 +94,7 @@ class DatacompRecap(tfds.core.GeneratorBasedBuilder):
             img.save(img_byte_arr, format='JPEG')
             return img_byte_arr.getvalue(), width, height
         except Exception as e:
-            print(f"Error downloading {url}: {e}")
+            print(f"index {index} Error downloading {url}: {e}")
             return None, None, None
 
 def main(config_name, local_data_dir, gcs_data_dir, gcs_tfds):
