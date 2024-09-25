@@ -9,6 +9,8 @@ from tqdm import tqdm
 import argparse
 import concurrent.futures
 import multiprocessing
+import time
+from huggingface_hub.utils import HfHubHTTPError
 
 class DatacompRecap(tfds.core.GeneratorBasedBuilder):
     VERSION = tfds.core.Version('1.0.0')
@@ -61,7 +63,7 @@ class DatacompRecap(tfds.core.GeneratorBasedBuilder):
         
         with concurrent.futures.ThreadPoolExecutor(max_workers=multiprocessing.cpu_count() * 2) as executor:
             futures = []
-            for i, sample in enumerate(tqdm(ds.take(num_samples), total=num_samples, desc="Submitting tasks")):
+            for i, sample in enumerate(tqdm(self._resilient_take(ds, num_samples), total=num_samples, desc="Submitting tasks")):
                 future = executor.submit(self._process_sample, i, sample)
                 futures.append(future)
             
@@ -69,6 +71,20 @@ class DatacompRecap(tfds.core.GeneratorBasedBuilder):
                 result = future.result()
                 if result is not None:
                     yield result
+
+    def _resilient_take(self, dataset, n):
+        """Resilient version of dataset.take() that handles API errors."""
+        count = 0
+        while count < n:
+            try:
+                for item in dataset:
+                    yield item
+                    count += 1
+                    if count >= n:
+                        return
+            except HfHubHTTPError as e:
+                print(f"Encountered API error: {e}. Retrying in 5 seconds...")
+                time.sleep(5)
 
     def _process_sample(self, index, sample):
         image_data, width, height = self._download_image(sample['url'], index)
@@ -84,18 +100,26 @@ class DatacompRecap(tfds.core.GeneratorBasedBuilder):
         return None
 
     def _download_image(self, url, index):
-        try:
-            response = requests.get(url, timeout=5)
-            response.raise_for_status()
-            img = Image.open(BytesIO(response.content))
-            img = img.convert('RGB')  # Convert to RGB to ensure consistency
-            width, height = img.size
-            img_byte_arr = BytesIO()
-            img.save(img_byte_arr, format='JPEG')
-            return img_byte_arr.getvalue(), width, height
-        except Exception as e:
-            print(f"index {index} Error downloading {url}: {e}")
-            return None, None, None
+        max_retries = 3
+        retry_delay = 1
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(url, timeout=5)
+                response.raise_for_status()
+                img = Image.open(BytesIO(response.content))
+                img = img.convert('RGB')  # Convert to RGB to ensure consistency
+                width, height = img.size
+                img_byte_arr = BytesIO()
+                img.save(img_byte_arr, format='JPEG')
+                return img_byte_arr.getvalue(), width, height
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    print(f"index {index} Error downloading {url}: {e}. Retrying in {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                else:
+                    print(f"index {index} Error downloading {url}: {e}. Max retries exceeded.")
+        return None, None, None
 
 def main(config_name, local_data_dir, gcs_data_dir, gcs_tfds):
     # Create the builder
