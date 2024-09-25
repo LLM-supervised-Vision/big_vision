@@ -13,7 +13,7 @@ import time
 from huggingface_hub.utils import HfHubHTTPError
 
 class DatacompRecap(tfds.core.GeneratorBasedBuilder):
-    VERSION = tfds.core.Version('1.0.0')
+    VERSION = None  # This will be set dynamically in __init__
     RELEASE_NOTES = {
         '1.0.0': 'Initial release.',
     }
@@ -30,6 +30,7 @@ class DatacompRecap(tfds.core.GeneratorBasedBuilder):
     def __init__(self, job_id=0, num_jobs=1, *args, **kwargs):
         self.job_id = job_id
         self.num_jobs = num_jobs
+        self.__class__.VERSION = tfds.core.Version(f'1.0.{job_id}')
         super().__init__(*args, **kwargs)
 
     def _info(self) -> tfds.core.DatasetInfo:
