@@ -27,10 +27,15 @@ class DatacompRecap(tfds.core.GeneratorBasedBuilder):
         tfds.core.BuilderConfig(name="100M", description="Dataset with 100,000,000 samples"),
     ]
 
+    def __init__(self, job_id=0, num_jobs=1, *args, **kwargs):
+        self.job_id = job_id
+        self.num_jobs = num_jobs
+        super().__init__(*args, **kwargs)
+
     def _info(self) -> tfds.core.DatasetInfo:
         return tfds.core.DatasetInfo(
             builder=self,
-            description=f"DataComp-Recap-1B dataset with {self.builder_config.name} samples",
+            description=f"DataComp-Recap-1B dataset with {self.builder_config.name} samples (Batch {self.job_id + 1} of {self.num_jobs})",
             features=tfds.features.FeaturesDict({
                 'image': tfds.features.Image(),
                 'url': tfds.features.Text(),
@@ -57,17 +62,24 @@ class DatacompRecap(tfds.core.GeneratorBasedBuilder):
             "10M": 10000000,
             "100M": 100000000,
         }
-        num_samples = config_to_samples[self.builder_config.name]
-        
+        total_samples = config_to_samples[self.builder_config.name]
+        samples_per_job = total_samples // self.num_jobs
+        start_sample = self.job_id * samples_per_job
+        end_sample = start_sample + samples_per_job if self.job_id < self.num_jobs - 1 else total_samples
+
         ds = load_dataset("UCSC-VLAA/Recap-DataComp-1B", split="train", streaming=True)
         
         with concurrent.futures.ThreadPoolExecutor(max_workers=multiprocessing.cpu_count() * 2) as executor:
             futures = []
-            for i, sample in enumerate(tqdm(self._resilient_take(ds, num_samples), total=num_samples, desc="Submitting tasks")):
-                future = executor.submit(self._process_sample, i, sample)
+            for i, sample in enumerate(tqdm(self._resilient_take(ds.skip(start_sample), end_sample - start_sample), 
+                                            total=end_sample - start_sample, 
+                                            desc=f"Submitting tasks (Batch {self.job_id + 1}/{self.num_jobs})")):
+                future = executor.submit(self._process_sample, start_sample + i, sample)
                 futures.append(future)
             
-            for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Processing samples"):
+            for future in tqdm(concurrent.futures.as_completed(futures), 
+                               total=len(futures), 
+                               desc=f"Processing samples (Batch {self.job_id + 1}/{self.num_jobs})"):
                 result = future.result()
                 if result is not None:
                     yield result
@@ -100,7 +112,7 @@ class DatacompRecap(tfds.core.GeneratorBasedBuilder):
         return None
 
     def _download_image(self, url, index):
-        max_retries = 3
+        max_retries = 2
         retry_delay = 1
         for attempt in range(max_retries):
             try:
@@ -114,28 +126,31 @@ class DatacompRecap(tfds.core.GeneratorBasedBuilder):
                 return img_byte_arr.getvalue(), width, height
             except Exception as e:
                 if attempt < max_retries - 1:
-                    print(f"index {index} Error downloading {url}: {e}. Retrying in {retry_delay} seconds...")
+                    # print(f"index {index} Error downloading {url}: {e}. Retrying in {retry_delay} seconds...")
                     time.sleep(retry_delay)
                     retry_delay *= 2
                 else:
-                    print(f"index {index} Error downloading {url}: {e}. Max retries exceeded.")
+                    print(f"index {index} Error downloading {url}: {e}. Max retries = {max_retries} exceeded.")
         return None, None, None
 
-def main(config_name, local_data_dir, gcs_data_dir, gcs_tfds):
+def main(config_name, job_id, num_jobs, local_data_dir, gcs_data_dir, gcs_tfds):
     # Create the builder
     data_dir = gcs_data_dir if gcs_tfds else local_data_dir
-    builder = DatacompRecap(config=config_name, data_dir=data_dir)
+    builder = DatacompRecap(config=config_name, job_id=job_id, num_jobs=num_jobs, 
+                            version=f"1.0.{job_id}", data_dir=data_dir)
 
     # Prepare the dataset
     builder.download_and_prepare()
-    print(f"Dataset has been prepared and stored in {data_dir}")
+    print(f"Dataset batch {job_id + 1}/{num_jobs} has been prepared and stored in {data_dir}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process DataComp-Recap-1B dataset")
     parser.add_argument("--config", type=str, choices=["10", "100", "1k", "10k", "1M", "10M", "100M"], default="10", help="Configuration to use")
+    parser.add_argument("--job_id", type=int, default=0, help="Job ID for this batch")
+    parser.add_argument("--num_jobs", type=int, default=1, help="Total number of jobs")
     parser.add_argument("--local_data_dir", type=str, default="/home/austinwang/tensorflow_datasets", help="Local storage path")
     parser.add_argument("--gcs_data_dir", type=str, default="gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets", help="GCS path")
     parser.add_argument("--gcs_tfds", type=bool, default=False, help="Whether to store the TFDS dataset in GCS")
     args = parser.parse_args()
 
-    main(args.config, args.local_data_dir, args.gcs_data_dir, args.gcs_tfds)
+    main(args.config, args.job_id, args.num_jobs, args.local_data_dir, args.gcs_data_dir, args.gcs_tfds)
