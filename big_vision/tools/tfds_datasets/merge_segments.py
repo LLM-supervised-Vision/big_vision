@@ -81,7 +81,7 @@ def update_dataset_info_json(bucket, blobs_sorted):
             dataset_info_blob = bucket.get_blob(f"{blob.name}")
             dataset_info = json.loads(dataset_info_blob.download_as_string())
             total_num_bytes += int(dataset_info["splits"][0]["numBytes"])
-            version_id = int(blob.name.split("/")[3].split(".")[2].split("_")[0])
+            version_id = int(blob.name.split("1.0.")[1].split("/")[0].split("_")[0])
             shard_lengths_accumulated[version_id] = len(shard_lengths)
             # logging.info(f"version_id: {version_id}")
             if previous_version_id is not None: next_version_id_dict[previous_version_id] = version_id
@@ -189,7 +189,7 @@ def move_files(bucket, blobs_sorted, shard_lengths_accumulated, next_version_id_
     
     # check the number of files in the destination directory
     blobs = list(bucket.list_blobs(prefix=FLAGS.prefix))
-    blobs = [blob for blob in blobs if blob.name.split("/")[3].split(".")[2]=="0"]
+    blobs = [blob for blob in blobs if blob.name.split("1.0.")[1].split("/")[0]=="0"]
     blobs = [blob for blob in blobs if blob.name.split("/")[-1].startswith(FLAGS.file_prefix)]
     blobs = [blob for blob in blobs if blob.name.split("/")[-1].endswith(f"{total_num_files:05d}")]
     logging.info(f"worker {FLAGS.worker_id}: len(blobs): {len(blobs)}")
@@ -198,41 +198,41 @@ def move_files(bucket, blobs_sorted, shard_lengths_accumulated, next_version_id_
 def main(argv):
 
     # print all flags
-    logging.info(f"================worker {FLAGS.worker_id}: Printing all flags================")
-    logging.info(f"worker {FLAGS.worker_id}: tfds_name: {FLAGS.tfds_name}")
-    logging.info(f"worker {FLAGS.worker_id}: split: {FLAGS.split}")
-    logging.info(f"worker {FLAGS.worker_id}: tfds_data_dir: {FLAGS.tfds_data_dir}")
-    logging.info(f"worker {FLAGS.worker_id}: final_version_id: {FLAGS.final_version_id}")
-    logging.info(f"worker {FLAGS.worker_id}: num_workers: {FLAGS.num_workers}")
-    logging.info(f"worker {FLAGS.worker_id}: worker_id: {FLAGS.worker_id}")
+    # logging.info(f"================worker {FLAGS.worker_id}: Printing all flags================")
+    # logging.info(f"worker {FLAGS.worker_id}: tfds_name: {FLAGS.tfds_name}")
+    # logging.info(f"worker {FLAGS.worker_id}: split: {FLAGS.split}")
+    # logging.info(f"worker {FLAGS.worker_id}: tfds_data_dir: {FLAGS.tfds_data_dir}")
+    # logging.info(f"worker {FLAGS.worker_id}: final_version_id: {FLAGS.final_version_id}")
+    # logging.info(f"worker {FLAGS.worker_id}: num_workers: {FLAGS.num_workers}")
+    # logging.info(f"worker {FLAGS.worker_id}: worker_id: {FLAGS.worker_id}")
 
     # derive flags
     destination_dir = f"{FLAGS.tfds_data_dir}/{FLAGS.tfds_name}/{_DESTINATION_VERSION}" # gs://us-central2-storage/tensorflow_datasets/laion400m/images/1.0.0/
     flags.DEFINE_string("destination_dir", destination_dir, "The destination directory of the TensorFlow dataset.")
-    logging.info(f"worker {FLAGS.worker_id}: destination_dir: {FLAGS.destination_dir}")
+    # logging.info(f"worker {FLAGS.worker_id}: destination_dir: {FLAGS.destination_dir}")
 
     prefix = "/".join(FLAGS.destination_dir.split("/")[3:]) # tensorflow_datasets/laion400m/images/1.0.0
     flags.DEFINE_string("prefix", prefix, "The prefix of the TensorFlow dataset.")
-    logging.info(f"worker {FLAGS.worker_id}: prefix: {FLAGS.prefix}")
+    # logging.info(f"worker {FLAGS.worker_id}: prefix: {FLAGS.prefix}")
 
-    file_prefix = f"{FLAGS.tfds_name}-{FLAGS.split}.tfrecord"
+    file_prefix = f"{FLAGS.tfds_name.split('/')[0]}-{FLAGS.split}.tfrecord"
     flags.DEFINE_string("file_prefix", file_prefix, "The file prefix of the TensorFlow dataset.")
-    logging.info(f"worker {FLAGS.worker_id}: file_prefix: {FLAGS.file_prefix}")
+    # logging.info(f"worker {FLAGS.worker_id}: file_prefix: {FLAGS.file_prefix}")
 
     # merge segments by updating dataset_info.json and moving files
-    logging.info(f"================worker {FLAGS.worker_id}: Getting blobs_sorted================")
+    # logging.info(f"================worker {FLAGS.worker_id}: Getting blobs_sorted================")
     bucket, blobs_sorted = get_blobs_sorted()
-    logging.info(f"worker {FLAGS.worker_id}: len(blobs_sorted): {len(blobs_sorted)}")
+    # logging.info(f"worker {FLAGS.worker_id}: len(blobs_sorted): {len(blobs_sorted)}")
 
-    logging.info(f"================worker {FLAGS.worker_id}: Updating dataset_info.json================")
+    # logging.info(f"================worker {FLAGS.worker_id}: Updating dataset_info.json================")
     shard_lengths_accumulated, next_version_id_dict, total_num_files = update_dataset_info_json(bucket, blobs_sorted)
-    logging.info(f"worker {FLAGS.worker_id}: len(shard_lengths_accumulated): {len(shard_lengths_accumulated)}")
-    logging.info(f"worker {FLAGS.worker_id}: shard_lengths_accumulated: {shard_lengths_accumulated}")
-    logging.info(f"worker {FLAGS.worker_id}: len(next_version_id_dict): {len(next_version_id_dict)}")
-    logging.info(f"worker {FLAGS.worker_id}: next_version_id_dict: {next_version_id_dict}")
-    logging.info(f"worker {FLAGS.worker_id}: total_num_files: {total_num_files}")
+    # logging.info(f"worker {FLAGS.worker_id}: len(shard_lengths_accumulated): {len(shard_lengths_accumulated)}")
+    # logging.info(f"worker {FLAGS.worker_id}: shard_lengths_accumulated: {shard_lengths_accumulated}")
+    # logging.info(f"worker {FLAGS.worker_id}: len(next_version_id_dict): {len(next_version_id_dict)}")
+    # logging.info(f"worker {FLAGS.worker_id}: next_version_id_dict: {next_version_id_dict}")
+    # logging.info(f"worker {FLAGS.worker_id}: total_num_files: {total_num_files}")
 
-    logging.info(f"================worker {FLAGS.worker_id}: Moving files================")
+    # logging.info(f"================worker {FLAGS.worker_id}: Moving files================")
     move_files(bucket, blobs_sorted, shard_lengths_accumulated, next_version_id_dict, total_num_files)
 
 if __name__ == "__main__":
