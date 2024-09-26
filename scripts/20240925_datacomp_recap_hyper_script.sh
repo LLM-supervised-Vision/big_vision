@@ -16,11 +16,28 @@ if [ -d "/home/austinwang/tensorflow_datasets" ]; then
 fi
 
 config=1M
-num_jobs=10
+num_samples=1000000
+num_samples_per_job=10000
+num_jobs_per_split=10
 
-for i in $(seq 0 $((num_jobs-1)))
+num_jobs=$((num_samples / num_samples_per_job))
+num_splits=$((num_jobs / num_jobs_per_split))
+
+echo "num_jobs $num_jobs"
+echo "num_splits $num_splits"
+
+for i in $(seq 0 $((num_splits-1)))
 do
-    echo "Starting job $((i))"
-    python /home/austinwang/austin_big_vision/scripts/20240924_datacomp_recap_construction.py --config $config --job_id $i --num_jobs $num_jobs --gcs_tfds True &
-    sleep 1
+    for j in $(seq 0 $((num_jobs_per_split-1)))
+    do
+        job_id=$((i * num_jobs_per_split + j))
+        if [ "$job_id" -lt "$num_jobs" ]; then
+            echo "Starting split $i, job $j, job_id $job_id"
+            python /home/austinwang/austin_big_vision/scripts/20240924_datacomp_recap_construction.py --config $config --job_id $job_id --num_jobs $num_jobs --gcs_tfds True &
+            sleep 1
+        fi
+    done
+    wait
+    echo "Split $i done"
+    sleep 3
 done
