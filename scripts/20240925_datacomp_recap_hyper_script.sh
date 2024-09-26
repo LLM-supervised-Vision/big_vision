@@ -15,8 +15,8 @@ if [ -d "/home/austinwang/tensorflow_datasets" ]; then
     rm -r /home/austinwang/tensorflow_datasets
 fi
 
-config=10k
-num_jobs=5
+config=1M
+num_jobs=10
 
 for i in $(seq 0 $((num_jobs-1)))
 do
