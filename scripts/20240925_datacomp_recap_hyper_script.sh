@@ -33,8 +33,8 @@ do
         job_id=$((i * num_jobs_per_split + j))
         if [ "$job_id" -lt "$num_jobs" ]; then
             echo "Starting split $i, job $j, job_id $job_id, start_sample $((job_id * num_samples_per_job))"
-            # python /home/austinwang/austin_big_vision/scripts/20240924_datacomp_recap_construction.py --config $config --job_id $job_id --num_jobs $num_jobs --gcs_tfds True &
-            sleep 1
+            python /home/austinwang/austin_big_vision/scripts/20240924_datacomp_recap_construction.py --config $config --job_id $job_id --num_jobs $num_jobs --gcs_tfds True &
+            sleep 0.5
         fi
     done
     wait

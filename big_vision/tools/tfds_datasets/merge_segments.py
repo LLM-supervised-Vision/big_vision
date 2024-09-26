@@ -35,6 +35,10 @@ def get_version(blob):
     version_number = version.split(".")[-1]
     return version_number
 
+def get_version_id(blob):
+    version = get_version(blob)
+    version_id = int(version.split("_")[0])
+    return version_id
 
 def get_blobs_sorted():
     
@@ -54,7 +58,7 @@ def get_blobs_sorted():
     # logging.info(f"len(blobs): {len(blobs)}")
 
     # Sort blobs based on the custom sorting key
-    blobs_sorted = sorted(blobs, key=get_version)
+    blobs_sorted = sorted(blobs, key=get_version_id)
     # logging.info(f"len(blobs_sorted): {len(blobs_sorted)}")
 
     return bucket, blobs_sorted
@@ -150,7 +154,7 @@ def move_files(bucket, blobs_sorted, shard_lengths_accumulated, next_version_id_
     file_index_dict = {}
     # copy the files to the destination directory with the modified names
     for i, blob in enumerate(blobs_sorted):
-        version_id = int(get_version(blob)[0])
+        version_id = int(get_version(blob).split("_")[0])
         if version_id in file_index_dict: 
             file_index_dict[version_id] += 1
             if file_index_dict[version_id] >= shard_lengths_accumulated[next_version_id_dict[version_id]]:
