@@ -5,7 +5,7 @@ import big_vision.configs.common as bvcc
 from big_vision.configs.proj.image_text import common
 from big_vision.configs.proj.paligemma.transfers.common import combine_and_keep_train, combine_and_keep_eval, TOKENIZER
 
-def training_data(res, *, prefix, text_len=64):
+def training_data(res, *, prefix, text_len=64,name='laion400m/images',inkey='caption'):
   """Creates training data config.
 
   You can add more arguments beside `res`, but give them good defaults.
@@ -19,14 +19,14 @@ def training_data(res, *, prefix, text_len=64):
   """
   c = bvcc.parse_arg('')  # Just make a configdict without extra import.
   c.data = dict(
-      name='laion400m/images',
+      name=name,
       split='train',
       data_dir='gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets'
   )
   c.pp = '|'.join([
       f'decode|resize({res})|value_range(-1,1)',
       f'strfmt("{prefix}", outkey="prefix")',
-      'copy(inkey="caption", outkey="suffix")',
+      f'copy(inkey="{inkey}", outkey="suffix")',
       combine_and_keep_train(text_len),
   ])
   return c
@@ -93,7 +93,7 @@ def get_config(arg=None):
   c.name = 'what the hell is this???'
 
   # Input section
-  c.input = training_data(c.res, prefix='', text_len=64)
+  c.input = training_data(c.res, prefix='', text_len=64, name='datacomp_recap/10k:1.0.0', inkey='re_caption')
 
   # c.total_epochs = 1
   c.input.batch_size = c.batch_size
