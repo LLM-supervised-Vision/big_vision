@@ -11,11 +11,11 @@ function handle_ctrl_c {
 # Trap Ctrl+C signal
 trap handle_ctrl_c SIGINT
 
-export TFDS_NAME=datacomp_recap/1M # laion400m/images
+export TFDS_NAME=datacomp_recap/10M # laion400m/images
 export SPLIT=train
 export TFDS_DATA_DIR=gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets
-export FINAL_VERSION_ID=49
-export NUM_WORKERS=1
+export FINAL_VERSION_ID=499
+export NUM_WORKERS=50
 
 # Check if the source directory exists in gcloud storage
 if [ $(gsutil ls $TFDS_DATA_DIR/$TFDS_NAME/1.0.0_source | wc -l) -eq 0 ]; then

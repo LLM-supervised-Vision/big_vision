@@ -93,7 +93,7 @@ def get_config(arg=None):
   c.name = 'what the hell is this???'
 
   # Input section
-  c.input = training_data(c.res, prefix='', text_len=64, name='datacomp_recap/10k:1.0.0', inkey='re_caption')
+  c.input = training_data(c.res, prefix='', text_len=64, name='datacomp_recap/10M:1.0.0', inkey='re_caption')
 
   # c.total_epochs = 1
   c.input.batch_size = c.batch_size
