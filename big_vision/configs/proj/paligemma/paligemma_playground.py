@@ -5,7 +5,7 @@ import big_vision.configs.common as bvcc
 from big_vision.configs.proj.image_text import common
 from big_vision.configs.proj.paligemma.transfers.common import combine_and_keep_train, combine_and_keep_eval, TOKENIZER
 
-def training_data(res, *, prefix, text_len=64,name='laion400m/images',inkey='caption'):
+def training_data(res, *, prefix, text_len=64,dataset_name='laion400m/images'):
   """Creates training data config.
 
   You can add more arguments beside `res`, but give them good defaults.
@@ -17,9 +17,16 @@ def training_data(res, *, prefix, text_len=64,name='laion400m/images',inkey='cap
   Returns:
     The ConfigDict for the input section.
   """
+  match dataset_name.split("/")[0]:
+    case 'laion400m':
+      inkey = 'caption'
+    case 'datacomp_recap':
+      inkey = 're_caption'
+    case _:
+      raise ValueError(f"Unknown dataset_name: {dataset_name}")
   c = bvcc.parse_arg('')  # Just make a configdict without extra import.
   c.data = dict(
-      name=name,
+      name=dataset_name,
       split='train',
       data_dir='gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets'
   )
@@ -84,7 +91,7 @@ def add_eval(c, res, *, text_len=64, prefix, mode, **kw):
 def get_config(arg=None):
   c = bvcc.parse_arg(
       arg, res=224,
-      mode='generative', loss_fn='softmax', drop_path_rate=0.0, wd=1e-4,
+      mode='generative', loss_fn='softmax', data='laion400m/images', drop_path_rate=0.0, wd=1e-4,
       freeze_vit=False, img_variant='B/16', img_beit_init=False,
       freeze_llm=True, llm_variant='gemma_2b',llm_ckpt="full", llm_pool='none', llm_lr_mult=0.1, llm_dropout=0.0, llm_clean_vocab=False, llm_projection=False,
       batch_size=8192, total_samples=3.0, dtype='float32',
@@ -93,7 +100,7 @@ def get_config(arg=None):
   c.name = 'what the hell is this???'
 
   # Input section
-  c.input = training_data(c.res, prefix='', text_len=64, name='datacomp_recap/10M:1.0.0', inkey='re_caption')
+  c.input = training_data(c.res, prefix='', text_len=64, dataset_name=c.data) # laion400m/images, datacomp_recap/10M:1.0.0
 
   # c.total_epochs = 1
   c.input.batch_size = c.batch_size
