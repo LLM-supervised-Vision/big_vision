@@ -24,6 +24,7 @@ class DatacompRecap(tfds.core.GeneratorBasedBuilder):
         tfds.core.BuilderConfig(name="10k", description="Dataset with 10,000 samples"),
         tfds.core.BuilderConfig(name="1M", description="Dataset with 1,000,000 samples"),
         tfds.core.BuilderConfig(name="10M", description="Dataset with 10,000,000 samples"),
+        tfds.core.BuilderConfig(name="50M", description="Dataset with 50,000,000 samples"),
         tfds.core.BuilderConfig(name="100M", description="Dataset with 100,000,000 samples"),
     ]
 
@@ -61,6 +62,7 @@ class DatacompRecap(tfds.core.GeneratorBasedBuilder):
             "10k": 10000,
             "1M": 1000000,
             "10M": 10000000,
+            "50M": 50000000,
             "100M": 100000000,
         }
         total_samples = config_to_samples[self.builder_config.name]
@@ -130,8 +132,8 @@ class DatacompRecap(tfds.core.GeneratorBasedBuilder):
                     # print(f"index {index} Error downloading {url}: {e}. Retrying in {retry_delay} seconds...")
                     time.sleep(retry_delay)
                     retry_delay *= 2
-                else:
-                    print(f"index {index} Error downloading {url}: {e}. Max retries = {max_retries} exceeded.")
+                # else:
+                    # print(f"index {index} Error downloading {url}: {e}. Max retries = {max_retries} exceeded.")
         return None, None, None
 
 def main(config_name, job_id, num_jobs, local_data_dir, gcs_data_dir, gcs_tfds):
@@ -146,7 +148,7 @@ def main(config_name, job_id, num_jobs, local_data_dir, gcs_data_dir, gcs_tfds):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process DataComp-Recap-1B dataset")
-    parser.add_argument("--config", type=str, choices=["10", "100", "1k", "10k", "1M", "10M", "100M"], default="10", help="Configuration to use")
+    parser.add_argument("--config", type=str, choices=["10", "100", "1k", "10k", "1M", "10M", "50M", "100M"], default="10", help="Configuration to use")
     parser.add_argument("--job_id", type=int, default=0, help="Job ID for this batch")
     parser.add_argument("--num_jobs", type=int, default=1, help="Total number of jobs")
     parser.add_argument("--local_data_dir", type=str, default="/home/austinwang/tensorflow_datasets", help="Local storage path")

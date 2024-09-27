@@ -15,9 +15,9 @@ if [ -d "/home/austinwang/tensorflow_datasets" ]; then
     rm -r /home/austinwang/tensorflow_datasets
 fi
 
-config=10M
-num_samples=10000000
-num_samples_per_job=20000
+config=50M
+num_samples=50000000
+num_samples_per_job=40000
 num_jobs_per_split=16
 
 num_jobs=$(( (num_samples + num_samples_per_job - 1) / num_samples_per_job ))
