@@ -5,7 +5,7 @@ from ml_collections import ConfigDict
 def get_config(arg=None):
     arg = bvcc.parse_arg(
         arg, res=224, token_len=77, 
-        loss_fn='softmax', unified=False, scale='small',
+        loss_fn='softmax', unified=False, scale='small', dataset_name='laion400m/images',
         lit=False, memory_efficient=False, debug=True
     )
     # common variables
@@ -16,16 +16,23 @@ def get_config(arg=None):
     config.input = ConfigDict()
     config.input.batch_size = 32_768
     config.input.shuffle_buffer_size = 50_000
-    config.input.data = dict(name='laion400m/images', split='train', data_dir='gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets')
+    config.input.data = dict(name=arg.dataset_name, split='train', data_dir='gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets')
 
     if arg.unified: arg.token_len = 64
     tokenizer = lambda inkey, outkey: (
       f'tokenize(max_len={arg.token_len}, model="c4_en", clip_bpe={not arg.unified}, '
       f'eos="sticky", pad_value=1, inkey="{inkey}", outkey="{outkey}")'
     )
+    match arg.dataset_name.split("/")[0]:
+        case 'laion400m':
+            inkey = 'caption'
+        case 'datacomp_recap':
+            inkey = 're_caption'
+        case _:
+            raise ValueError(f"Unknown dataset_name: {arg.dataset_name}")
     config.input.pp = (
         f'decode|resize({arg.res})|flip_lr|value_range(-1,1)|'
-        f'{tokenizer("caption", "labels")}|keep("image", "labels")'
+        f'{tokenizer(inkey, "labels")}|keep("image", "labels")'
     )
     config.input.pp_late = (f'{tokenizer("labels", "labels")}')
 
