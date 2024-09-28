@@ -91,7 +91,7 @@ def add_eval(c, res, *, text_len=64, prefix, mode, **kw):
 def get_config(arg=None):
   c = bvcc.parse_arg(
       arg, res=224,
-      mode='generative', loss_fn='softmax', data='laion400m/images', drop_path_rate=0.0, wd=1e-4,
+      mode='generative', loss_fn='softmax', dataset_name='laion400m/images', drop_path_rate=0.0, wd=1e-4,
       freeze_vit=False, img_variant='B/16', img_beit_init=False,
       freeze_llm=True, llm_variant='gemma_2b',llm_ckpt="full", llm_pool='none', llm_lr_mult=0.1, llm_dropout=0.0, llm_clean_vocab=False, llm_projection=False,
       batch_size=8192, total_samples=3.0, dtype='float32',
@@ -100,7 +100,7 @@ def get_config(arg=None):
   c.name = 'what the hell is this???'
 
   # Input section
-  c.input = training_data(c.res, prefix='', text_len=64, dataset_name=c.data) # laion400m/images, datacomp_recap/10M:1.0.0
+  c.input = training_data(c.res, prefix='', text_len=64, dataset_name=c.dataset_name) # laion400m/images, datacomp_recap/10M:1.0.0
 
   # c.total_epochs = 1
   c.input.batch_size = c.batch_size
@@ -222,6 +222,14 @@ def get_config(arg=None):
   # Evaluation section
   c.evals = {}
   add_eval(c, c.res, prefix='', batch_size=1024, mode=c.mode)
+
+  if c.dataset_name.split("/")[0] == 'datacomp_recap':
+    assert "M" in c.dataset_name, "datacomp_recap dataset_name should have M in it"
+    samples_per_epoch = int(c.dataset_name.split("/")[1].split("M")[0]) * 1e6
+    epochs = 1
+    c.total_steps = int(samples_per_epoch*epochs / c.input.batch_size)
+    c.lr = 1e-4
+    c.wd = 0.0
 
   if c.debug:
     c.input.shuffle_buffer_size = None
