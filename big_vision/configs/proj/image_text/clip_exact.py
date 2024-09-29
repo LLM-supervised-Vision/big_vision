@@ -214,22 +214,30 @@ def get_config(arg=None):
             ('img/.*', None), 
             ('.*', dict(decay_type='cosine', warmup_steps=warmup_steps)),
         ]
+    if arg.dataset_name.split("/")[0] == 'datacomp_recap':
+        config.lr = 1e-5
+        config.wd = 0.0
+        config.model_init = "gs://us-central2-storage/tensorflow_datasets/vit-b-16_3b_pretraining/clip_bs16384_warm0.03_lr1e-3_wd1e-4_bf16_qknorm-F_b2-0.95_12lyr_07-25_1415/checkpoint.bv-000183105/"
+        config.input.batch_size = 4096 # 32_768
+        epoch = 5
+        config.total_steps = int(1e7 * epoch / config.input.batch_size)
+        config.schedule = [('.*', dict(decay_type='cosine', warmup_steps=int(0.03*config.total_steps)))]
 
     if arg.debug:
-        config.input.data = dict(name='coco_captions', split='train', data_dir='gs://us-central2-storage/tensorflow_datasets')
-        config.input.pp = (f'decode|resize({arg.res})|value_range(-1, 1)|'
-                'coco_captions("captions")|choice(inkey="captions", outkey="text")|'
-                f'{tokenizer("text", "labels")}|keep("image", "labels")')
+        # config.input.data = dict(name='coco_captions', split='train', data_dir='gs://us-central2-storage/tensorflow_datasets')
+        # config.input.pp = (f'decode|resize({arg.res})|value_range(-1, 1)|'
+        #         'coco_captions("captions")|choice(inkey="captions", outkey="text")|'
+        #         f'{tokenizer("text", "labels")}|keep("image", "labels")')
 
         # config.input.batch_size = 16
         # config.model.image.variant = 'mu/16'
         # config.model.text.variant = 'mu'
         # config.model.text.num_classes = 32
         config.wandb = False
-        config.input.batch_size = 32
-        config.total_steps = 10
-        config.schedule = [('.*', dict(decay_type='cosine', warmup_steps=3))]
-        config.log_training_steps = 1
-        config.evals = {}
+        # config.input.batch_size = 32
+        # config.total_steps = 10
+        # config.schedule = [('.*', dict(decay_type='cosine', warmup_steps=3))]
+        # config.log_training_steps = 1
+        # config.evals = {}
 
     return config
