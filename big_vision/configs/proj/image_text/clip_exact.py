@@ -1,11 +1,15 @@
+import json
+import tensorflow as tf
+import ml_collections
+from ml_collections import ConfigDict
+
 import big_vision.configs.common as bvcc
 from big_vision.configs.proj.image_text import common
-from ml_collections import ConfigDict
 
 def get_config(arg=None):
     arg = bvcc.parse_arg(
         arg, res=224, token_len=77, 
-        loss_fn='softmax', unified=False, scale='small', dataset_name='laion400m/images',
+        loss_fn='softmax', unified=False, scale='small', dataset_name='laion400m/images', recap=True,
         lit=False, memory_efficient=False, debug=True
     )
     # common variables
@@ -27,7 +31,7 @@ def get_config(arg=None):
         case 'laion400m':
             inkey = 'caption'
         case 'datacomp_recap':
-            inkey = 're_caption'
+            inkey = 're_caption' if arg.recap else 'caption'
         case _:
             raise ValueError(f"Unknown dataset_name: {arg.dataset_name}")
     config.input.pp = (
@@ -216,11 +220,15 @@ def get_config(arg=None):
         ]
     if arg.dataset_name.split("/")[0] == 'datacomp_recap':
         config.lr = 1e-5
-        config.wd = 0.0
-        config.model_init = "gs://us-central2-storage/tensorflow_datasets/vit-b-16_3b_pretraining/clip_bs16384_warm0.03_lr1e-3_wd1e-4_bf16_qknorm-F_b2-0.95_12lyr_07-25_1415/checkpoint.bv-000183105/"
-        config.input.batch_size = 4096 # 32_768
+        config.wd = 1e-4
+        backbone = "gs://us-central2-storage/tensorflow_datasets/vit-b-16_3b_pretraining/clip_bs16384_warm0.03_lr1e-3_wd1e-4_bf16_qknorm-F_b2-0.95_12lyr_07-25_1415"
+        ckpt_cfg_path = f'{backbone}/config.json'
+        ckpt_cfg = ml_collections.ConfigDict(json.load(tf.io.gfile.GFile(ckpt_cfg_path, 'r')))
+        config.model_init = f"{backbone}/checkpoint.bv-{ckpt_cfg.total_steps:09d}"
+        config.model = ckpt_cfg.model
+        config.input.batch_size = 2048 # 32_768
         epoch = 5
-        config.total_steps = int(1e7 * epoch / config.input.batch_size)
+        config.total_steps = int(8344225 * epoch / config.input.batch_size)
         config.schedule = [('.*', dict(decay_type='cosine', warmup_steps=int(0.03*config.total_steps)))]
 
     if arg.debug:

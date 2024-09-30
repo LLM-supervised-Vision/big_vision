@@ -127,7 +127,8 @@ def load(init_params, init_file, model_cfg, dont_load=()):  # pylint: disable=in
 
   # Some older (but expensive to train) checkpoints had the posemb added twice
   # by mistake. We detect this here and merge them.
-  extra_posemb = params["Encoder_0"].pop("pos_embedding", 0)
-  params["pos_embedding"] += extra_posemb
+  extra_posemb = params["Encoder_0"].pop("pos_embedding", None)
+  # params["pos_embedding"] += extra_posemb
+  if extra_posemb is not None: params["pos_embedding"] += extra_posemb
 
   return common.merge_params(params, init_params, dont_load)
