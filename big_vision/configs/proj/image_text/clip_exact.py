@@ -23,7 +23,7 @@ def get_config(arg=None):
     config.input.data = dict(name=arg.dataset_name, split='train', data_dir='gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets')
 
     if arg.unified: arg.token_len = 64
-    if arg.dataset_name.split("/")[0] == 'datacomp_recap': arg.token_len = 128
+    # if arg.dataset_name.split("/")[0] == 'datacomp_recap': arg.token_len = 128
     tokenizer = lambda inkey, outkey: (
       f'tokenize(max_len={arg.token_len}, model="c4_en", clip_bpe={not arg.unified}, '
       f'eos="sticky", pad_value=1, inkey="{inkey}", outkey="{outkey}")'
