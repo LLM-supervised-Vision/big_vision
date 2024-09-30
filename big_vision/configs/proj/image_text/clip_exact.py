@@ -231,7 +231,7 @@ def get_config(arg=None):
         config.optax = ckpt_cfg.optax
         config.loss_fn = ckpt_cfg.loss_fn
         config.grad_clip_norm = ckpt_cfg.grad_clip_norm
-        config.input.batch_size = 32_768
+        config.input.batch_size = 8192 # 32_768
         epoch = 5
         config.total_steps = int(8344225 * epoch / config.input.batch_size)
         config.schedule = [('.*', dict(decay_type='cosine', warmup_steps=int(0.03*config.total_steps)))]
