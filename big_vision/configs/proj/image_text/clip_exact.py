@@ -23,6 +23,7 @@ def get_config(arg=None):
     config.input.data = dict(name=arg.dataset_name, split='train', data_dir='gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets')
 
     if arg.unified: arg.token_len = 64
+    if arg.dataset_name.split("/")[0] == 'datacomp_recap': arg.token_len = 128
     tokenizer = lambda inkey, outkey: (
       f'tokenize(max_len={arg.token_len}, model="c4_en", clip_bpe={not arg.unified}, '
       f'eos="sticky", pad_value=1, inkey="{inkey}", outkey="{outkey}")'
@@ -237,15 +238,16 @@ def get_config(arg=None):
         #         'coco_captions("captions")|choice(inkey="captions", outkey="text")|'
         #         f'{tokenizer("text", "labels")}|keep("image", "labels")')
 
-        # config.input.batch_size = 16
-        # config.model.image.variant = 'mu/16'
-        # config.model.text.variant = 'mu'
+        config.input.batch_size = 16
+        config.model.image.variant = 'mu/16'
+        config.model.text.variant = 'mu'
+        config.model_init = None
         # config.model.text.num_classes = 32
         config.wandb = False
-        # config.input.batch_size = 32
-        # config.total_steps = 10
-        # config.schedule = [('.*', dict(decay_type='cosine', warmup_steps=3))]
-        # config.log_training_steps = 1
-        # config.evals = {}
+        config.input.batch_size = 32
+        config.total_steps = 10
+        config.schedule = [('.*', dict(decay_type='cosine', warmup_steps=3))]
+        config.log_training_steps = 1
+        config.evals = {}
 
     return config
