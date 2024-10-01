@@ -221,7 +221,7 @@ def get_config(arg=None):
         ]
     if arg.dataset_name.split("/")[0] == 'datacomp_recap':
         config.lr = 1e-5
-        config.wd = 1e-4
+        config.wd = 1e-7
         backbone = "gs://us-central2-storage/tensorflow_datasets/vit-b-16_3b_pretraining/clip_bs16384_warm0.03_lr1e-3_wd1e-4_bf16_qknorm-F_b2-0.95_12lyr_07-25_1415"
         ckpt_cfg_path = f'{backbone}/config.json'
         ckpt_cfg = ml_collections.ConfigDict(json.load(tf.io.gfile.GFile(ckpt_cfg_path, 'r')))
