@@ -32,7 +32,7 @@ def get_config(arg=None):
         case 'laion400m':
             inkey = 'caption'
         case 'datacomp_recap':
-            inkey = 're_caption' if arg.recap else 'caption'
+            inkey = 're_caption' if arg.recap else 'org_caption'
         case _:
             raise ValueError(f"Unknown dataset_name: {arg.dataset_name}")
     config.input.pp = (
