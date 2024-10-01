@@ -1,11 +1,15 @@
 import os
 import logging
+import json
+import tensorflow as tf
+import ml_collections
 from ml_collections import ConfigDict
+
 import big_vision.configs.common as bvcc
 from big_vision.configs.proj.image_text import common
 from big_vision.configs.proj.paligemma.transfers.common import combine_and_keep_train, combine_and_keep_eval, TOKENIZER
 
-def training_data(res, *, prefix, text_len=64,dataset_name='laion400m/images'):
+def training_data(res, *, prefix, text_len=64,dataset_name='laion400m/images',datacomp_inkey='re_caption'):
   """Creates training data config.
 
   You can add more arguments beside `res`, but give them good defaults.
@@ -21,7 +25,7 @@ def training_data(res, *, prefix, text_len=64,dataset_name='laion400m/images'):
     case 'laion400m':
       inkey = 'caption'
     case 'datacomp_recap':
-      inkey = 're_caption'
+      inkey = datacomp_inkey
     case _:
       raise ValueError(f"Unknown dataset_name: {dataset_name}")
   c = bvcc.parse_arg('')  # Just make a configdict without extra import.
@@ -229,11 +233,18 @@ def get_config(arg=None):
 
   if c.dataset_name.split("/")[0] == 'datacomp_recap':
     assert "M" in c.dataset_name, "datacomp_recap dataset_name should have M in it"
-    samples_per_epoch = int(c.dataset_name.split("/")[1].split("M")[0]) * 1e6
-    epochs = 1
+    samples_per_epoch = 834425
+    epochs = 5
     c.total_steps = int(samples_per_epoch*epochs / c.input.batch_size)
     c.lr = 1e-4
-    c.wd = 0.0
+    c.wd = 1e-7
+
+    backbone = "gs://us-central2-storage/tensorflow_datasets/mllm_ckpts/paligemma/gemma2b-partial_frozen99-0.01-gap_b16-F_contrastive_bs16k_s3b_lr1e-3_wd1e-4_bf16_09-01_0446"
+    ckpt_cfg_path = f'{backbone}/config.json'
+    ckpt_cfg = ml_collections.ConfigDict(json.load(tf.io.gfile.GFile(ckpt_cfg_path, 'r')))
+    c.model_init = f"{backbone}/checkpoint.bv-{ckpt_cfg.total_steps:09d}"
+    c.model = ckpt_cfg.model
+
 
   if c.debug:
     c.input.shuffle_buffer_size = None
