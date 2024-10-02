@@ -233,7 +233,14 @@ def get_config(arg=None):
         config.grad_clip_norm = ckpt_cfg.grad_clip_norm
         config.input.batch_size = 16384 # 32_768
         epoch = 5
-        config.total_steps = int(8344225 * epoch / config.input.batch_size)
+        match arg.dataset_name.split("/")[1].split(":")[0]:
+            case '10M':
+                num_samples = 8344225
+            case '50M':
+                num_samples = 41598460
+            case _:
+                raise ValueError(f"Unknown dataset_name: {arg.dataset_name}")
+        config.total_steps = int(num_samples * epoch / config.input.batch_size)
         config.schedule = [('.*', dict(decay_type='cosine', warmup_steps=int(0.03*config.total_steps)))]
 
     if arg.debug:

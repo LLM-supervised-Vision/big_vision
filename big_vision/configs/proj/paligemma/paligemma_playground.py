@@ -236,7 +236,14 @@ def get_config(arg=None):
     c.lr = 1e-5
     c.wd = 0.0
     epochs = 5
-    c.total_steps = int(8344225 * epochs / c.input.batch_size)
+    match c.dataset_name.split("/")[1].split(":")[0]:
+      case '10M':
+        num_samples = 8344225
+      case '50M':
+        num_samples = 41598460
+      case _:
+        raise ValueError(f"Unknown dataset_name: {c.dataset_name}")
+    c.total_steps = int(num_samples * epochs / c.input.batch_size)
     c.schedule = [('.*', dict(decay_type='cosine', warmup_steps=int(0.03*c.total_steps)))]
 
     if c.datacomp_backbone == 'gemma_supervised':
