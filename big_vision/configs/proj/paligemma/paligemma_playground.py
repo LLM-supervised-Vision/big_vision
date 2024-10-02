@@ -95,7 +95,7 @@ def add_eval(c, res, *, text_len=64, prefix, mode, **kw):
 def get_config(arg=None):
   c = bvcc.parse_arg(
       arg, res=224,
-      mode='generative', loss_fn='softmax', dataset_name='laion400m/images', datacomp_inkey='re_caption',drop_path_rate=0.0, wd=1e-4,
+      mode='generative', loss_fn='softmax', dataset_name='laion400m/images', datacomp_inkey='re_caption',datacomp_backbone='gemma_supervised',drop_path_rate=0.0, wd=1e-4,
       freeze_vit=False, img_variant='B/16', img_beit_init=False, img_qknorm=False,
       freeze_llm=True, llm_variant='gemma_2b',llm_ckpt="full", llm_pool='none', llm_lr_mult=0.1, llm_dropout=0.0, llm_clean_vocab=False, llm_projection=False,
       batch_size=8192, total_samples=3.0, dtype='float32',
@@ -239,17 +239,30 @@ def get_config(arg=None):
     c.total_steps = int(8344225 * epochs / c.input.batch_size)
     c.schedule = [('.*', dict(decay_type='cosine', warmup_steps=int(0.03*c.total_steps)))]
 
-    backbone = "gs://us-central2-storage/tensorflow_datasets/mllm_ckpts/paligemma/gemma2b-partial_frozen99-0.01-gap_b16-F_contrastive_bs16k_s3b_lr1e-3_wd1e-4_bf16_09-01_0446"
-    ckpt_cfg_path = f'{backbone}/config.json'
-    ckpt_cfg = ml_collections.ConfigDict(json.load(tf.io.gfile.GFile(ckpt_cfg_path, 'r')))
-    c.model_init = f"{backbone}/checkpoint.bv-{ckpt_cfg.total_steps:09d}"
-    c.model = ckpt_cfg.model
+    if c.datacomp_backbone == 'gemma_supervised':
+      backbone = "gs://us-central2-storage/tensorflow_datasets/mllm_ckpts/paligemma/gemma2b-partial_frozen99-0.01-gap_b16-F_contrastive_bs16k_s3b_lr1e-3_wd1e-4_bf16_09-01_0446"
+      ckpt_cfg_path = f'{backbone}/config.json'
+      ckpt_cfg = ml_collections.ConfigDict(json.load(tf.io.gfile.GFile(ckpt_cfg_path, 'r')))
+      c.model_init = f"{backbone}/checkpoint.bv-{ckpt_cfg.total_steps:09d}"
+      c.model = ckpt_cfg.model
+    elif c.datacomp_backbone == 'clip+llm':
+      backbone = "gs://us-central2-storage/tensorflow_datasets/vit-b-16_3b_pretraining/clip_bs16384_warm0.03_lr1e-3_wd1e-4_bf16_qknorm-F_b2-0.95_12lyr_07-25_1415"
+      ckpt_cfg_path = f'{backbone}/config.json'
+      ckpt_cfg = ml_collections.ConfigDict(json.load(tf.io.gfile.GFile(ckpt_cfg_path, 'r')))
+      c.model_init['img'] = f"{backbone}/checkpoint.bv-{ckpt_cfg.total_steps:09d}:img"
+      c.model.img = ckpt_cfg.model.image
+      c.model.img['pool_type'] = 'none'
+      if c.model_load is None: 
+        c.model_load = {'img_load_kw': {'dont_load': ['head/.*']}}
+      else:
+        c.model_load['img_load_kw'] = {'dont_load': ['head/.*']}
 
 
   if c.debug:
     c.input.shuffle_buffer_size = None
     c.input.batch_size = 32
     c.total_steps = 10
+    c.schedule = [('.*', dict(decay_type='cosine', warmup_steps=3))]
     c.log_training_steps = 1
 
     eval_when_debugging = False
