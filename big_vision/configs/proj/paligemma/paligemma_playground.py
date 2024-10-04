@@ -233,7 +233,7 @@ def get_config(arg=None):
 
   if c.dataset_name.split("/")[0] == 'datacomp_recap':
     assert "M" in c.dataset_name, "datacomp_recap dataset_name should have M in it"
-    epochs = 5
+    epochs = 5 if len(c.dataset_name.split(",")) == 1 else int(c.dataset_name.split(",")[1])
     match c.dataset_name.split("/")[1].split(":")[0]:
       case '10M':
         num_samples = 8344225
