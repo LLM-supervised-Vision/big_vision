@@ -95,7 +95,7 @@ def add_eval(c, res, *, text_len=64, prefix, mode, **kw):
 def get_config(arg=None):
   c = bvcc.parse_arg(
       arg, res=224,
-      mode='generative', loss_fn='softmax', dataset_name='laion400m/images', datacomp_inkey='re_caption',datacomp_backbone='gemma_supervised',drop_path_rate=0.0, lr=1e-3, wd=1e-4,
+      mode='generative', loss_fn='softmax', dataset_name='laion400m/images', datacomp_inkey='re_caption',datacomp_backbone='gemma_supervised',drop_path_rate=0.0, lr=1e-3, wd=1e-4, epoch=5,
       freeze_vit=False, img_variant='B/16', img_beit_init=False, img_qknorm=False,
       freeze_llm=True, llm_variant='gemma_2b',llm_ckpt="full", llm_pool='none', llm_lr_mult=0.1, llm_dropout=0.0, llm_clean_vocab=False, llm_projection=False,
       batch_size=8192, total_samples=3.0, dtype='float32',
@@ -233,7 +233,7 @@ def get_config(arg=None):
 
   if c.dataset_name.split("/")[0] == 'datacomp_recap':
     assert "M" in c.dataset_name, "datacomp_recap dataset_name should have M in it"
-    epochs = 5 if len(c.dataset_name.split(",")) == 1 else int(c.dataset_name.split(",")[1])
+    epochs = c.epoch
     match c.dataset_name.split("/")[1].split(":")[0]:
       case '10M':
         num_samples = 8344225
