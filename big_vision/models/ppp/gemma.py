@@ -44,8 +44,6 @@ import numpy as np
 import orbax.checkpoint
 from big_vision.models.vit import MAPHead
 
-import logging
-
 def get_config(variant):
   """Returns config for specified gemma variant."""
   if variant == "gemma_6lyr":
@@ -571,7 +569,6 @@ class Model(nn.Module):
     for block_id, block in enumerate(blocks):
       (x,final_block_id), (unused_scan_arg, scan_out) = block(
           (x,block_id), unused_scan_arg, positions, mask, decode, deterministic)
-      logging.info(f"gemma: block_id: {block_id}, final_block_id: {final_block_id}")
     for lyr in range(self.depth):
       out[f"block{lyr:02d}"] = jax.tree.map(lambda o, l=lyr: o[l], scan_out)
 
