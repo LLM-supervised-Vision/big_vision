@@ -95,7 +95,7 @@ def add_eval(c, res, *, text_len=64, prefix, mode, **kw):
 def get_config(arg=None):
   c = bvcc.parse_arg(
       arg, res=224,
-      mode='generative', loss_fn='softmax', dataset_name='laion400m/images', datacomp_inkey='re_caption',datacomp_backbone='gemma_supervised',drop_path_rate=0.0, wd=1e-4,
+      mode='generative', loss_fn='softmax', dataset_name='laion400m/images', datacomp_inkey='re_caption',datacomp_backbone='gemma_supervised',drop_path_rate=0.0, lr=1e-3, wd=1e-4,
       freeze_vit=False, img_variant='B/16', img_beit_init=False, img_qknorm=False,
       freeze_llm=True, llm_variant='gemma_2b',llm_ckpt="full", llm_pool='none', llm_lr_mult=0.1, llm_dropout=0.0, llm_clean_vocab=False, llm_projection=False,
       batch_size=8192, total_samples=3.0, dtype='float32',
@@ -111,7 +111,7 @@ def get_config(arg=None):
   c.total_steps = int(c.total_samples*1e9 / c.input.batch_size)
   c.optax_name = 'scale_by_adam'
   c.optax = dict(b1=0.9,b2=0.95)
-  c.lr = 1e-3
+  c.lr = c.lr
   c.wd = c.wd
   c.grad_clip_norm = 1.0
   c.label_smoothing = 0.0
