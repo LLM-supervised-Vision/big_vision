@@ -233,8 +233,6 @@ def get_config(arg=None):
 
   if c.dataset_name.split("/")[0] == 'datacomp_recap':
     assert "M" in c.dataset_name, "datacomp_recap dataset_name should have M in it"
-    c.lr = 1e-5
-    c.wd = 0.0
     epochs = 5
     match c.dataset_name.split("/")[1].split(":")[0]:
       case '10M':
