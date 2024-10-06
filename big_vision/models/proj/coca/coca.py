@@ -136,6 +136,7 @@ class Decoder(nn.Module):
   scan: bool = False
   remat_policy: str = "nothing_saveable"
   dtype_mm: str = "float32"
+  normalize_qk: bool = False
 
   @nn.compact
   def __call__(self,
@@ -259,6 +260,7 @@ class Decoder(nn.Module):
       y, _ = dec_scanned(num_heads=self.num_heads, mlp_dim=self.mlp_dim,
                          dtype_mm=self.dtype_mm,
                          dropout_rate=self.dropout_rate, decode=decode,
+                         normalize_qk=self.normalize_qk,
                          use_bias=self.use_bias, name="EncDecBlock")(
                              y, encoded, decoder_mask, deterministic)
     else:
@@ -267,6 +269,7 @@ class Decoder(nn.Module):
             num_heads=self.num_heads, mlp_dim=self.mlp_dim,
             dtype_mm=self.dtype_mm,
             dropout_rate=self.dropout_rate, decode=decode,
+            normalize_qk=self.normalize_qk,
             use_bias=self.use_bias, name=f"EncDecBlock{lyr}")(
                 y, encoded, decoder_mask=decoder_mask,
                 deterministic=deterministic)
@@ -325,6 +328,7 @@ class Model(nn.Module):
   remat_policy: str = "nothing_saveable"
   dtype_mm: str = "float32"
   temperature_init: float = 1.0/0.07
+  normalize_qk: bool = False
 
   def setup(self):
 
@@ -363,6 +367,7 @@ class Model(nn.Module):
         scan=self.scan,
         remat_policy=self.remat_policy,
         dtype_mm=self.dtype_mm,
+        normalize_qk=self.normalize_qk,
     )
     # self.ln_cls = nn.LayerNorm(name="LayerNormCls") # post layer norm for contrastive_ztxt
     self.multimodal_decoder = Decoder(
@@ -378,6 +383,7 @@ class Model(nn.Module):
         scan=self.scan,
         remat_policy=self.remat_policy,
         dtype_mm=self.dtype_mm,
+        normalize_qk=self.normalize_qk,
     )
 
     temp_init = jnp.log(self.temperature_init)

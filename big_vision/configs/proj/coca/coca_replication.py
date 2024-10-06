@@ -28,6 +28,7 @@ def get_config(arg=None):
                           dec_lyr=12,
                           masked_pred_prob=0.0,
                           decoder_bias=True,
+                          normalize_qk=False,
                           res=224,
                           scan=True,
                           eval_only=False,
@@ -141,6 +142,7 @@ def get_config(arg=None):
   config.model.scan = config.scan
   config.model.dtype_mm = config.dtype # 'bfloat16'
   config.model.temperature_init = 1.0/0.07
+  config.model.normalize_qk = config.normalize_qk
 
   # config.mesh = [("fsdp",-1)]
   # config.sharding_strategy = [('.*', f'fsdp(axis="fsdp", min_size_to_shard_mb=2)')]
