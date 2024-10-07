@@ -97,14 +97,14 @@ def get_config(arg=None):
       arg, res=224,
       mode='generative', loss_fn='softmax', dataset_name='laion400m/images', datacomp_inkey='re_caption',datacomp_backbone='gemma_supervised',drop_path_rate=0.0, lr=1e-3, wd=1e-4, epoch=5.0,
       freeze_vit=False, img_variant='B/16', img_beit_init=False, img_qknorm=False,
-      freeze_llm=True, llm_variant='gemma_2b',llm_ckpt="full", llm_pool='none', llm_lr_mult=0.1, llm_dropout=0.0, llm_clean_vocab=False, llm_projection=False,
+      freeze_llm=True, llm_variant='gemma_2b',llm_ckpt="full", llm_pool='none', llm_lr_mult=0.1, llm_dropout=0.0, llm_clean_vocab=False, llm_projection=False, llm_text_len=64,
       batch_size=8192, total_samples=3.0, dtype='float32',
       debug=False, 
   )
   c.name = 'what the hell is this???'
 
   # Input section
-  c.input = training_data(c.res, prefix='', text_len=64, dataset_name=c.dataset_name, datacomp_inkey=c.datacomp_inkey) # laion400m/images, datacomp_recap/10M:1.0.0
+  c.input = training_data(c.res, prefix='', text_len=c.llm_text_len, dataset_name=c.dataset_name, datacomp_inkey=c.datacomp_inkey) # laion400m/images, datacomp_recap/10M:1.0.0
 
   # c.total_epochs = 1
   c.input.batch_size = c.batch_size
@@ -229,7 +229,7 @@ def get_config(arg=None):
 
   # Evaluation section
   c.evals = {}
-  add_eval(c, c.res, prefix='', batch_size=1024, mode=c.mode)
+  add_eval(c, c.res, prefix='', batch_size=1024, mode=c.mode, text_len=c.llm_text_len)
 
   if c.dataset_name.split("/")[0] == 'datacomp_recap':
     assert "M" in c.dataset_name, "datacomp_recap dataset_name should have M in it"
