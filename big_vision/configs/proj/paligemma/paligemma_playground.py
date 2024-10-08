@@ -277,6 +277,7 @@ def get_config(arg=None):
 
 
   if c.debug:
+    c.wandb = False
     c.input.shuffle_buffer_size = None
     c.input.batch_size = 32
     c.total_steps = 10

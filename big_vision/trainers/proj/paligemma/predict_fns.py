@@ -107,7 +107,7 @@ def _contrastive_logits(train_state, batch, *, model):
     zimg = zimg / (zimg_norm + 1e-8)
 
   if 'llm/pre_logits' in out:
-    if model.llm.pool == 'eos':
+    if model.llm.head == 'eos':
       eos_mask = text == 1
       ztxt = jnp.where(eos_mask[:, :, None], out['llm/pre_logits'], 0).sum(axis=1)
     else:
