@@ -392,7 +392,7 @@ def main(argv):
           zimg_norm = jnp.linalg.norm(zimg, axis=-1, keepdims=True)
           zimg = zimg / (zimg_norm + 1e-8)
 
-          if model.llm.pool == 'eos':
+          if model.llm.head == 'eos':
             eos_mask = txts[:, 1:] == 1
             ztxt = jnp.where(eos_mask[:, :, None], out['llm/pre_logits'], 0).sum(axis=1)
           else:

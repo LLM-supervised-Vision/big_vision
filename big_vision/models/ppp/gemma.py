@@ -431,7 +431,7 @@ class Model(nn.Module):
   
   dtype: str = "float32"
   lyrs_frozen: int = -1
-  pool: str = "none"
+  head: str = "none"
   projection: bool = False
   proj_bias: bool = False
   drop_path_rate: float = 0.0
@@ -578,24 +578,27 @@ class Model(nn.Module):
     x = RMSNorm(name="final_norm",dtype=self.dtype)(x)
     out["pre_logits"] = x
 
-    if self.pool == "map":
+    if self.head == "map":
       out["head_input"] = MAPHead(
           num_heads=self.num_heads, mlp_dim=self.mlp_dim, dtype_mm=self.dtype)(x)
-    elif self.pool == "gap":
+    elif self.head == "gap":
       out["head_input"] = jnp.mean(x, axis=1)
-    elif self.pool == "0":
+    elif self.head == "0":
       out["head_input"] = x[:, 0]
-    elif self.pool == "tok":
+    elif self.head == "tok":
       out["head_input"] = x[:, 0]
       encoded = encoded[:, 1:]
-    elif self.pool == "argmax":
+    elif self.head == "argmax":
       out["head_input"] = jnp.argmax(x, axis=1)
-    elif self.pool == "eos":
+    elif self.head == "eos":
       pass
-    elif self.pool == "none":
+    elif self.head == "ffn":
+      out["ffn"] = y = FeedForward(features=self.width, hidden_dim=self.mlp_dim, dtype=self.dtype, name="FFNAdapter")(x)
+      out["head_input"] = jnp.mean(y, axis=1)
+    elif self.head == "none":
       pass
     else:
-      raise ValueError(f"Unknown pool type: '{self.contrastive_pool_type}'")
+      raise ValueError(f"Unknown head type: '{self.contrastive_head_type}'")
 
     if self.projection:
       out["contrastive_logits"] = nn.Dense(self.width, use_bias=self.proj_bias, name="head")(x)

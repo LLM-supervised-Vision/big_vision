@@ -31,7 +31,7 @@ def _get_config(model):
   config.cache_dtype = model.cache_dtype
   config.dtype = model.dtype
   config.lyrs_frozen = model.lyrs_frozen
-  config.pool = model.pool
+  config.head = model.head
   config.projection = model.projection
   config.proj_bias = model.proj_bias
   config.drop_path_rate = model.drop_path_rate
@@ -64,7 +64,7 @@ class Model(nn.Module):
   cache_dtype: str | None = "bfloat16"  # bfloat16 to save memory and transfers.
   dtype: str = "float32"
   lyrs_frozen: int = -1
-  pool: str = "none"
+  head: str = "none"
   projection: bool = False
   proj_bias: bool = False
   drop_path_rate: float = 0.0
