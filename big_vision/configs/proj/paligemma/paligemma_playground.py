@@ -203,7 +203,6 @@ def get_config(arg=None):
       # Unfreeze the adapter only for llm
       assert c.llm_head == 'ffn', "adapter is for ffn head"
       assert c.llm_projection == False, "adapter is for ffn head"
-      assert c.llm_lr_mult == 1.0, "adapter is for ffn head"
       c.schedule = [
         ('img/.*', None if c.freeze_vit else sched),
         ('.*Adapter/.*', sched),
