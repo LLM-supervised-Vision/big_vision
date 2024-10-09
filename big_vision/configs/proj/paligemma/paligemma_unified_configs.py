@@ -84,7 +84,7 @@ def get_config(arg=None):
     arg,
     objective='contrastive', loss_fn='softmax', lr=1e-3, wd=1e-4, batch_size=16384, total_epochs=-1, total_samples=-1.0,
     training_mode='pretrain', res=224, dataset_name='laion400m/images', caption_key='caption',
-    img_variant='B/16', img_trainable='scratch', img_beit_init=False, img_qknorm=False,
+    img_variant='B/16', img_trainable='full', img_beit_init=False, img_qknorm=False,
     llm_variant='gemma_2b', llm_trainable='full', llm_head='none', llm_lr_mult=0.1, llm_dropout=0.0, llm_clean_vocab=False, llm_projection=False, llm_text_len=64, 
     drop_path_rate=0.0, dtype='float32',
     debug=False,
@@ -122,7 +122,7 @@ def get_config(arg=None):
   if not c.llm_clean_vocab: c.model.llm['vocab_size'] = 256_000 + 1024 + 128
   if c.loss_fn == 'sigmoid': c.model.img['proj_bias'], c.model.llm['proj_bias'] = True, True
   if 'partial_frozen:' in c.llm_trainable: 
-    c.llm_trainable, lyrs_frozen = c.llm_ckpt.split(':')
+    c.llm_trainable, lyrs_frozen = c.llm_trainable.split(':')
     c.model.llm['lyrs_frozen'] = int(lyrs_frozen)
 
   # Model Initialization Section
@@ -155,5 +155,37 @@ def get_config(arg=None):
   # Training Section
 
   # schedule
+  sched = dict(decay_type='cosine', warmup_percent=0.03)
+  c.schedule = [('.*', sched)]
+  if not c.img_trainable == 'frozen' and not c.llm_trainable == 'frozen':
+    c.lr_mults = [
+      ('img/.*', 1.0),
+      ('llm/.*', c.llm_lr_mult),
+      ('t', 1.0),
+    ]
+  match c.llm_trainable:
+    case 'full':
+      pass
+    case 'partial_frozen':
+      c.schedule = [
+        ('img/.*', None if c.freeze_vit else sched),
+        ('llm/layers/frozen/.*', None),
+        ('.*', sched),
+      ]
+    case 'adapter':
+      # Unfreeze the adapter only for llm
+      assert c.llm_head == 'ffn', "adapter is for ffn head"
+      assert c.llm_projection == False, "adapter is for ffn head"
+      c.schedule = [
+        ('img/.*', None if c.freeze_vit else sched),
+        ('.*Adapter/.*', sched),
+        ('t', sched),
+        ('.*', None),
+      ]
+    case _:
+      raise ValueError(f"Unknown llm_trainable: {c.llm_trainable}")
 
-
+  # FSDP strategy.
+  c.mesh = [('data', -1)]
+  c.sharding_strategy = [('.*', 'fsdp(axis="data")')]
+  c.sharding_rules = [('act_batch', ('data',))]

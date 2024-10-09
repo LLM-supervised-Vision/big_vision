@@ -155,7 +155,7 @@ def get_config(arg=None):
   if c.model.llm['projection']: dont_load += ['head/.*']
   c.model_load = {'img_load_kw': {}, 'llm_load_kw': {'dont_load': dont_load}}
 
-  llm_ckpt = '/home/austinwang/gemma2b.npz'
+  llm_ckpt = 'gs://us-central2-storage/tensorflow_datasets/gemma2b.npz'
   if ':' in c.llm_ckpt: c.llm_ckpt, lyrs_frozen = c.llm_ckpt.split(':')
   match c.llm_ckpt:
     case 'full':
@@ -215,11 +215,11 @@ def get_config(arg=None):
   if llm_ckpt is not None: 
     c.model_init = {'img': None, 'llm': llm_ckpt}
     # check whether llm_ckpt exists or not, if not then download it from gcs directory
-    if not os.path.exists(llm_ckpt):
-      gcs_dir = 'gs://us-central2-storage/tensorflow_datasets/'
-      gcs_path = gcs_dir + llm_ckpt.split('/')[-1]
-      logging.info(f"Downloading {gcs_path} to {llm_ckpt}")
-      os.system(f'gsutil cp {gcs_path} {llm_ckpt}')
+    # if not os.path.exists(llm_ckpt):
+    #   gcs_dir = 'gs://us-central2-storage/tensorflow_datasets/'
+    #   gcs_path = gcs_dir + llm_ckpt.split('/')[-1]
+    #   logging.info(f"Downloading {gcs_path} to {llm_ckpt}")
+    #   os.system(f'gsutil cp {gcs_path} {llm_ckpt}')
 
   # c.model_init = '/mnt/vlm-pd/ckpts/paligemma/paligemma-3b-pt-224.bf16.npz'
   # /mnt/vlm-pd/ckpts/paligemma/paligemma-3b-pt-224.bf16.npz
@@ -254,25 +254,26 @@ def get_config(arg=None):
       case _:
         raise ValueError(f"Unknown dataset_name: {c.dataset_name}")
     c.total_steps = int(num_samples * epochs / c.input.batch_size)
-    c.schedule = [('.*', dict(decay_type='cosine', warmup_steps=int(0.03*c.total_steps)))]
 
-    if c.datacomp_backbone == 'gemma_supervised':
-      backbone = "gs://us-central2-storage/tensorflow_datasets/mllm_ckpts/paligemma/gemma2b-partial_frozen99-0.01-gap_b16-F_contrastive_bs16k_s3b_lr1e-3_wd1e-4_bf16_09-01_0446"
-      ckpt_cfg_path = f'{backbone}/config.json'
-      ckpt_cfg = ml_collections.ConfigDict(json.load(tf.io.gfile.GFile(ckpt_cfg_path, 'r')))
-      c.model_init = f"{backbone}/checkpoint.bv-{ckpt_cfg.total_steps:09d}"
-      c.model = ckpt_cfg.model
-    elif c.datacomp_backbone == 'clip+llm':
-      backbone = "gs://us-central2-storage/tensorflow_datasets/vit-b-16_3b_pretraining/clip_bs16384_warm0.03_lr1e-3_wd1e-4_bf16_qknorm-F_b2-0.95_12lyr_07-25_1415"
-      ckpt_cfg_path = f'{backbone}/config.json'
-      ckpt_cfg = ml_collections.ConfigDict(json.load(tf.io.gfile.GFile(ckpt_cfg_path, 'r')))
-      c.model_init['img'] = f"{backbone}/checkpoint.bv-{ckpt_cfg.total_steps:09d}:img"
-      c.model.img = ckpt_cfg.model.image
-      c.model.img['pool_type'] = 'none'
-      if c.model_load is None: 
-        c.model_load = {'img_load_kw': {'dont_load': ['head/.*']}}
-      else:
-        c.model_load['img_load_kw'] = {'dont_load': ['head/.*']}
+    # c.schedule = [('.*', dict(decay_type='cosine', warmup_steps=int(0.03*c.total_steps)))]
+
+    # if c.datacomp_backbone == 'gemma_supervised':
+    #   backbone = "gs://us-central2-storage/tensorflow_datasets/mllm_ckpts/paligemma/gemma2b-partial_frozen99-0.01-gap_b16-F_contrastive_bs16k_s3b_lr1e-3_wd1e-4_bf16_09-01_0446"
+    #   ckpt_cfg_path = f'{backbone}/config.json'
+    #   ckpt_cfg = ml_collections.ConfigDict(json.load(tf.io.gfile.GFile(ckpt_cfg_path, 'r')))
+    #   c.model_init = f"{backbone}/checkpoint.bv-{ckpt_cfg.total_steps:09d}"
+    #   c.model = ckpt_cfg.model
+    # elif c.datacomp_backbone == 'clip+llm':
+    #   backbone = "gs://us-central2-storage/tensorflow_datasets/vit-b-16_3b_pretraining/clip_bs16384_warm0.03_lr1e-3_wd1e-4_bf16_qknorm-F_b2-0.95_12lyr_07-25_1415"
+    #   ckpt_cfg_path = f'{backbone}/config.json'
+    #   ckpt_cfg = ml_collections.ConfigDict(json.load(tf.io.gfile.GFile(ckpt_cfg_path, 'r')))
+    #   c.model_init['img'] = f"{backbone}/checkpoint.bv-{ckpt_cfg.total_steps:09d}:img"
+    #   c.model.img = ckpt_cfg.model.image
+    #   c.model.img['pool_type'] = 'none'
+    #   if c.model_load is None: 
+    #     c.model_load = {'img_load_kw': {'dont_load': ['head/.*']}}
+    #   else:
+    #     c.model_load['img_load_kw'] = {'dont_load': ['head/.*']}
 
 
   if c.debug:
