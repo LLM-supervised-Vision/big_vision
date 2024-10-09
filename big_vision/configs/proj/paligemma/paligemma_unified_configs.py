@@ -83,14 +83,14 @@ def get_config(arg=None):
   c = bvcc.parse_arg(
     arg,
     objective='contrastive', loss_fn='softmax', lr=1e-3, wd=1e-4, batch_size=16384, total_epochs=-1, total_samples=-1.0,
-    training_mode='pretrain', res=224, dataset_name='laion400m/images', caption_key='caption', backbone='gemma_2b',
+    training_mode='pretrain', res=224, dataset_name='laion400m/images', caption_key='caption',
     img_variant='B/16', img_trainable='scratch', img_beit_init=False, img_qknorm=False,
     llm_variant='gemma_2b', llm_trainable='full', llm_head='none', llm_lr_mult=0.1, llm_dropout=0.0, llm_clean_vocab=False, llm_projection=False, llm_text_len=64, 
     drop_path_rate=0.0, dtype='float32',
     debug=False,
 	)
   
-	# Input Section
+	# Input Data Section
   c.input = training_data(dataset_name=c.dataset_name, caption_key=c.caption_key, res=c.res, prefix='', text_len=c.llm_text_len)
   c.input.batch_size = c.batch_size
   if c.total_epochs > 0:
@@ -101,7 +101,7 @@ def get_config(arg=None):
   else:
     raise ValueError("Either total_epochs or total_samples must be specified")
   
-  # Model Section
+  # Model Config Section
   c.model_name = 'proj.paligemma.paligemma'
   c.model = dict(
     temperature_init = 1/0.07 if c.loss_fn == 'softmax' else 10.0,
@@ -109,29 +109,42 @@ def get_config(arg=None):
   )
   c.model.img = dict(
     variant=c.img_variant,
-    posemb='learn', rep_size=False, dropout=0.0, pool_type='gap',
-    head_zeroinit=True, beit_init=c.img_beit_init, mask=None, normalize_qk=c.img_qknorm, scan=True,
-    remat_policy='nothing_saveable', dtype_mm=c.dtype, proj_bias=True if c.loss_fn == 'softmax' else False, drop_path_rate=c.drop_path_rate,
+    posemb='learn', rep_size=False, dropout=0.0, pool_type='none', 
+    head_zeroinit=False, beit_init=c.img_beit_init, mask=None, normalize_qk=c.img_qknorm, scan=True, 
+    remat_policy='nothing_saveable', dtype_mm=c.dtype, proj_bias=False, drop_path_rate=c.drop_path_rate,
   )
   c.model.llm = dict(
     variant=c.llm_variant, 
-    scan=True, remat_policy='nothing_saveable', vocab_size=None if c.llm_clean_vocab else 256_000 + 1024 + 128,
-    dropout=c.llm_dropout, dropout_bdims=(), cache_dtype=None, dtype=c.dtype, lyrs_frozen=-1 if not ':' in c.llm_ckpt else int(c.llm_ckpt.split(':')[1]),
-    head=c.llm_head, projection=c.llm_projection, proj_bias=False if c.loss_fn == 'softmax' else True, drop_path_rate=c.drop_path_rate,
+    scan=True, remat_policy='nothing_saveable', vocab_size=None, dropout=c.llm_dropout, 
+    dropout_bdims=(), cache_dtype=None, dtype=c.dtype, lyrs_frozen=-1, head=c.llm_head, 
+    projection=c.llm_projection, proj_bias=False, drop_path_rate=c.drop_path_rate,
   )
+  if not c.llm_clean_vocab: c.model.llm['vocab_size'] = 256_000 + 1024 + 128
+  if c.loss_fn == 'sigmoid': c.model.img['proj_bias'], c.model.llm['proj_bias'] = True, True
+  if 'partial_frozen:' in c.llm_trainable: 
+    c.llm_trainable, lyrs_frozen = c.llm_ckpt.split(':')
+    c.model.llm['lyrs_frozen'] = int(lyrs_frozen)
 
-  if c.datacomp_backbone == 'gemma_supervised':
-    ckpt_cfg_path = f'{backbone_dict[c.backbone]}/config.json'
+  # Model Initialization Section
+  c.model_init = {'img': None, 'llm': None}
+  if c.training_mode.split('_')[0] == 'pretrain':
+    # model = scratch vit + pre-trained gemma_2b
+    llm_backbone = backbone_dict[c.llm_variant]
+    c.model_init['llm'] = llm_backbone
+  elif c.training_mode.split('_')[0] == 'finetune': 
+    assert c.training_mode.split('_')[1] in ['clip+llm','gemma_supervised'], f'Unknown training_mode: {c.training_mode}'
+    backbone = backbone_dict[c.training_mode.split('_')[1]]
+    ckpt_cfg_path = f'{backbone}/config.json'
     ckpt_cfg = ml_collections.ConfigDict(json.load(tf.io.gfile.GFile(ckpt_cfg_path, 'r')))
+    if backbone == 'gemma_supervised':
+      c.model_init = f"{backbone}/checkpoint.bv-{ckpt_cfg.total_steps:09d}"
+      c.model = ckpt_cfg.model
+    elif backbone == 'clip+llm':
+      c.model_init['img'] = f"{backbone}/checkpoint.bv-{ckpt_cfg.total_steps:09d}:img"
+      c.model.img = ckpt_cfg.model.image
+      c.model.img['pool_type'] = 'none'
 
-  # Checkpoint Loading Section
-  img_backbone, llm_backbone = None, None
-  c.model_load = {}
-
-  backbone = backbone_dict[c.backbone]
-
-  # messy...
-
+  # model_load
   dont_load = []
   if c.model.llm['head'] == 'map': dont_load += ['MAPHead.*']
   if c.model.llm['head'] == 'ffn': dont_load += ['FFNAdapter.*'] 
@@ -140,4 +153,7 @@ def get_config(arg=None):
 
 
   # Training Section
+
+  # schedule
+
 
