@@ -220,19 +220,19 @@ def get_config(arg=None):
             ('.*', dict(decay_type='cosine', warmup_steps=warmup_steps)),
         ]
     if arg.dataset_name.split("/")[0] == 'datacomp_recap':
-        config.lr = 1e-5
-        config.wd = 0.0
-        backbone = "gs://us-central2-storage/tensorflow_datasets/vit-b-16_3b_pretraining/clip_bs16384_warm0.03_lr1e-3_wd1e-4_bf16_qknorm-F_b2-0.95_12lyr_07-25_1415"
-        ckpt_cfg_path = f'{backbone}/config.json'
-        ckpt_cfg = ml_collections.ConfigDict(json.load(tf.io.gfile.GFile(ckpt_cfg_path, 'r')))
-        config.model_init = f"{backbone}/checkpoint.bv-{ckpt_cfg.total_steps:09d}"
-        config.model = ckpt_cfg.model
-        config.optax_name = ckpt_cfg.optax_name
-        config.optax = ckpt_cfg.optax
-        config.loss_fn = ckpt_cfg.loss_fn
-        config.grad_clip_norm = ckpt_cfg.grad_clip_norm
+        # config.lr = 1e-5
+        # config.wd = 0.0
+        # backbone = "gs://us-central2-storage/tensorflow_datasets/vit-b-16_3b_pretraining/clip_bs16384_warm0.03_lr1e-3_wd1e-4_bf16_qknorm-F_b2-0.95_12lyr_07-25_1415"
+        # ckpt_cfg_path = f'{backbone}/config.json'
+        # ckpt_cfg = ml_collections.ConfigDict(json.load(tf.io.gfile.GFile(ckpt_cfg_path, 'r')))
+        # config.model_init = f"{backbone}/checkpoint.bv-{ckpt_cfg.total_steps:09d}"
+        # config.model = ckpt_cfg.model
+        # config.optax_name = ckpt_cfg.optax_name
+        # config.optax = ckpt_cfg.optax
+        # config.loss_fn = ckpt_cfg.loss_fn
+        # config.grad_clip_norm = ckpt_cfg.grad_clip_norm
         config.input.batch_size = 16384 # 32_768
-        epoch = 5
+        epoch = 10
         match arg.dataset_name.split("/")[1].split(":")[0]:
             case '10M':
                 num_samples = 8344225
