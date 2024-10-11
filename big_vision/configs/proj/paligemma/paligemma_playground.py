@@ -9,38 +9,33 @@ import big_vision.configs.common as bvcc
 from big_vision.configs.proj.image_text import common
 from big_vision.configs.proj.paligemma.transfers.common import combine_and_keep_train, combine_and_keep_eval, TOKENIZER
 
-def training_data(res, *, prefix, text_len=64,dataset_name='laion400m/images',datacomp_inkey='re_caption'):
-  """Creates training data config.
-
-  You can add more arguments beside `res`, but give them good defaults.
-  
-  Args:
-    res: The requested image resolution (eg 224).
-    text_len: sequence length.
-
-  Returns:
-    The ConfigDict for the input section.
-  """
-  match dataset_name.split("/")[0]:
-    case 'laion400m':
-      inkey = 'caption'
-    case 'datacomp_recap':
-      inkey = datacomp_inkey
-    case _:
-      raise ValueError(f"Unknown dataset_name: {dataset_name}")
-  c = bvcc.parse_arg('')  # Just make a configdict without extra import.
-  c.data = dict(
-      name=dataset_name,
-      split='train',
-      data_dir='gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets'
-  )
-  c.pp = '|'.join([
-      f'decode|resize({res})|value_range(-1,1)',
-      f'strfmt("{prefix}", outkey="prefix")',
-      f'copy(inkey="{inkey}", outkey="suffix")',
-      combine_and_keep_train(text_len),
-  ])
-  return c
+def training_data(res, *, prefix, text_len=64, dataset_name='laion400m/images', org_caption_ratio=0.5):
+    """Creates training data config."""
+    match dataset_name.split("/")[0]:
+        case 'laion400m':
+            inkey = 'caption'
+        case 'datacomp_recap':
+            # We'll use both captions with specified ratio
+            inkey = ['org_caption', 're_caption']
+        case _:
+            raise ValueError(f"Unknown dataset_name: {dataset_name}")
+    
+    c = bvcc.parse_arg('')
+    c.data = dict(
+        name=dataset_name,
+        split='train',
+        data_dir='gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets'
+    )
+    
+    
+    c.pp = '|'.join([
+        f'decode|resize({res})|value_range(-1,1)',
+        f'strfmt("{prefix}", outkey="prefix")',
+        f"ratio_choice(inkey=['org_caption', 're_caption'], outkey='caption', ratios=[{org_caption_ratio}, {1-org_caption_ratio}])|"
+        f'copy(inkey="caption", outkey="suffix")',  # Change this line to use the chosen caption
+        combine_and_keep_train(text_len),
+    ])
+    return c
 
 def add_eval(c, res, *, text_len=64, prefix, mode, **kw):
   if mode == "contrastive":
@@ -96,7 +91,7 @@ def get_config(arg=None):
   c = bvcc.parse_arg(
       arg, res=224,
       mode='generative', loss_fn='softmax', dataset_name='laion400m/images', drop_path_rate=0.0, lr=1e-3, wd=1e-4,
-      datacomp_inkey='re_caption',datacomp_backbone='gemma_supervised', epoch=5.0,
+      org_caption_ratio=1.0,datacomp_backbone='gemma_supervised', epoch=5.0,
       freeze_vit=False, img_variant='B/16', img_beit_init=False, img_qknorm=False,
       freeze_llm=True, llm_variant='gemma_2b',llm_ckpt="full", llm_head='none', llm_lr_mult=0.1, llm_dropout=0.0, llm_clean_vocab=False, llm_projection=False, llm_text_len=64,
       batch_size=8192, total_samples=3.0, dtype='float32',
@@ -105,7 +100,7 @@ def get_config(arg=None):
   c.name = 'what the hell is this???'
 
   # Input section
-  c.input = training_data(c.res, prefix='', text_len=c.llm_text_len, dataset_name=c.dataset_name, datacomp_inkey=c.datacomp_inkey) # laion400m/images, datacomp_recap/10M:1.0.0
+  c.input = training_data(c.res, prefix='', text_len=c.llm_text_len, dataset_name=c.dataset_name, org_caption_ratio=c.org_caption_ratio) # laion400m/images, datacomp_recap/10M:1.0.0
 
   # c.total_epochs = 1
   c.input.batch_size = c.batch_size
