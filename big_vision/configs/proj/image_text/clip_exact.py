@@ -9,7 +9,7 @@ from big_vision.configs.proj.image_text import common
 def get_config(arg=None):
     arg = bvcc.parse_arg(
         arg, res=224, token_len=77, 
-        loss_fn='softmax', unified=False, scale='small', dataset_name='laion400m/images', recap=True,
+        loss_fn='softmax', unified=False, scale='small', dataset_name='laion400m/images', org_caption_ratio=1.0,
         lit=False, memory_efficient=False, debug=True
     )
     # common variables
@@ -28,17 +28,21 @@ def get_config(arg=None):
       f'tokenize(max_len={arg.token_len}, model="c4_en", clip_bpe={not arg.unified}, '
       f'eos="sticky", pad_value=1, inkey="{inkey}", outkey="{outkey}")'
     )
-    match arg.dataset_name.split("/")[0]:
-        case 'laion400m':
-            inkey = 'caption'
-        case 'datacomp_recap':
-            inkey = 're_caption' if arg.recap else 'org_caption'
-        case _:
-            raise ValueError(f"Unknown dataset_name: {arg.dataset_name}")
-    config.input.pp = (
-        f'decode|resize({arg.res})|flip_lr|value_range(-1,1)|'
-        f'{tokenizer(inkey, "labels")}|keep("image", "labels")'
-    )
+
+    if arg.dataset_name.split("/")[0] == 'datacomp_recap':
+        config.input.pp = (
+            f'decode|resize({arg.res})|flip_lr|value_range(-1,1)|'
+            f'ratio_choice(inkey=["org_caption", "re_caption"], outkey="caption", ratios=[{arg.org_caption_ratio}, {1-arg.org_caption_ratio}])|'
+            f'{tokenizer("caption", "labels")}|keep("image", "labels")'
+        )
+    elif arg.dataset_name.split("/")[0] == 'laion400m':
+        config.input.pp = (
+            f'decode|resize({arg.res})|flip_lr|value_range(-1,1)|'
+            f'{tokenizer("captions", "labels")}|keep("image", "labels")'
+        )
+    else:
+        raise ValueError(f"Unknown dataset_name: {arg.dataset_name}")
+
     config.input.pp_late = (f'{tokenizer("labels", "labels")}')
 
     # Model section
@@ -250,8 +254,8 @@ def get_config(arg=None):
         #         f'{tokenizer("text", "labels")}|keep("image", "labels")')
 
         config.input.batch_size = 16
-        config.model.image.variant = 'mu/16'
-        config.model.text.variant = 'mu'
+        config.model.image.variant = 'Ti/16'
+        config.model.text.variant = 'Ti'
         config.model_init = None
         # config.model.text.num_classes = 32
         config.wandb = False

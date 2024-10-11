@@ -189,17 +189,3 @@ def getidx(inkey, index_key, outkey=None):
     return data
   return _getidx
 
-@Registry.register("preprocess_ops.ratio_choice")
-def get_ratio_choice(inkey, outkey, ratios):
-    """Chooses one of the input keys based on specified ratios and copies it to the output key."""
-    assert len(inkey) == len(ratios), "Number of input keys must match number of ratios"
-    cumulative_ratios = tf.cumsum(ratios)
-    
-    def _ratio_choice(data):
-        choice = tf.random.uniform([], 0, 1, dtype=tf.float32)
-        chosen_key = tf.cast(tf.reduce_min(tf.where(choice <= cumulative_ratios)), tf.int32)
-        data[outkey] = tf.switch_case(chosen_key, branch_fns=[
-            lambda k=k: data[k] for k in inkey
-        ])
-        return data
-    return _ratio_choice
