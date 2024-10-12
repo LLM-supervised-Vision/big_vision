@@ -11,15 +11,6 @@ from big_vision.configs.proj.paligemma.transfers.common import combine_and_keep_
 
 def training_data(res, *, prefix, text_len=64, dataset_name='laion400m/images', org_caption_ratio=0.5):
     """Creates training data config."""
-    match dataset_name.split("/")[0]:
-        case 'laion400m':
-            inkey = 'caption'
-        case 'datacomp_recap':
-            # We'll use both captions with specified ratio
-            inkey = ['org_caption', 're_caption']
-        case _:
-            raise ValueError(f"Unknown dataset_name: {dataset_name}")
-    
     c = bvcc.parse_arg('')
     c.data = dict(
         name=dataset_name,
@@ -27,14 +18,26 @@ def training_data(res, *, prefix, text_len=64, dataset_name='laion400m/images', 
         data_dir='gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets'
     )
     
+    match dataset_name.split("/")[0]:
+        case 'laion400m':
+          c.pp = '|'.join([
+              f'decode|resize({res})|value_range(-1,1)',
+              f'strfmt("{prefix}", outkey="prefix")',
+              f'copy(inkey="caption", outkey="suffix")',  # Change this line to use the chosen caption
+              combine_and_keep_train(text_len),
+          ])
+        case 'datacomp_recap':
+            # We'll use both captions with specified ratio
+            c.pp = '|'.join([
+                f'decode|resize({res})|value_range(-1,1)',
+                f'strfmt("{prefix}", outkey="prefix")',
+                f'ratio_choice(inkey=["org_caption", "re_caption"], outkey="caption", ratios=[{org_caption_ratio}, {1-org_caption_ratio}])|'
+                f'copy(inkey="caption", outkey="suffix")',  # Change this line to use the chosen caption
+                combine_and_keep_train(text_len),
+            ])
+        case _:
+            raise ValueError(f"Unknown dataset_name: {dataset_name}")
     
-    c.pp = '|'.join([
-        f'decode|resize({res})|value_range(-1,1)',
-        f'strfmt("{prefix}", outkey="prefix")',
-        f"ratio_choice(inkey=['org_caption', 're_caption'], outkey='caption', ratios=[{org_caption_ratio}, {1-org_caption_ratio}])|"
-        f'copy(inkey="caption", outkey="suffix")',  # Change this line to use the chosen caption
-        combine_and_keep_train(text_len),
-    ])
     return c
 
 def add_eval(c, res, *, text_len=64, prefix, mode, **kw):
