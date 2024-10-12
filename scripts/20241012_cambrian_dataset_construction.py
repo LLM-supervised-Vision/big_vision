@@ -115,7 +115,9 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
 def main(config, job_id, num_jobs, local_data_dir, gcs_data_dir, gcs_tfds):
     data_dir = gcs_data_dir if gcs_tfds else local_data_dir
     builder = CambrianDataset(config=config, job_id=job_id, num_jobs=num_jobs, version=f"1.0.{job_id}", data_dir=data_dir)
-    builder.download_and_prepare()
+    builder.download_and_prepare(
+        download_config=tfds.download.DownloadConfig(num_shards=1),
+    )
     print(f"Dataset batch {job_id + 1}/{num_jobs} has been prepared and stored in {data_dir}")
 
 if __name__ == "__main__":
