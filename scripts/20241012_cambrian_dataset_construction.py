@@ -10,7 +10,7 @@ import multiprocessing
 import time
 
 class CambrianDataset(tfds.core.GeneratorBasedBuilder):
-    VERSION = tfds.core.Version('1.0.0')
+    VERSION = None  # This will be set dynamically in __init__
     RELEASE_NOTES = {
         '1.0.0': 'Initial release.',
     }
@@ -23,6 +23,7 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
     def __init__(self, job_id=0, num_jobs=1, *args, **kwargs):
         self.job_id = job_id
         self.num_jobs = num_jobs
+        self.__class__.VERSION = tfds.core.Version(f'1.0.{job_id}')
         super().__init__(*args, **kwargs)
 
     def _info(self) -> tfds.core.DatasetInfo:
@@ -113,7 +114,7 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
 
 def main(config, job_id, num_jobs, local_data_dir, gcs_data_dir, gcs_tfds):
     data_dir = gcs_data_dir if gcs_tfds else local_data_dir
-    builder = CambrianDataset(config=config, job_id=job_id, num_jobs=num_jobs, data_dir=data_dir)
+    builder = CambrianDataset(config=config, job_id=job_id, num_jobs=num_jobs, version=f"1.0.{job_id}", data_dir=data_dir)
     builder.download_and_prepare()
     print(f"Dataset batch {job_id + 1}/{num_jobs} has been prepared and stored in {data_dir}")
 
