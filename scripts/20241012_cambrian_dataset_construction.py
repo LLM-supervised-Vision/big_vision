@@ -33,10 +33,8 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
             features=tfds.features.FeaturesDict({
                 'id': tfds.features.Text(),
                 'image': tfds.features.Image(),
-                'conversations': tfds.features.Sequence({
-                    'from': tfds.features.Text(),
-                    'value': tfds.features.Text(),
-                }),
+                'conversations': tfds.features.Sequence(tfds.features.Text()),
+                'source': tfds.features.Text(),
             }),
             supervised_keys=None,
         )
@@ -99,14 +97,58 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
 
     def _process_sample(self, index, sample, image_base_path):
         try:
-            image_path = os.path.join(image_base_path, sample['image'])
+            image_file = sample.get('image')
+            if not image_file or image_file in ['', 'None', 'none', 'nan']:
+                print(f"Warning: Invalid or missing image for sample {index}")
+                return None
+
+            image_path = os.path.join(image_base_path, image_file)
             with open(image_path, 'rb') as image_file:
                 image_data = image_file.read()
 
+            conversations = sample.get('conversations', [])
+            processed_conversations = []
+
+            if not isinstance(conversations, list) or len(conversations) < 2:
+                print(f"Warning: Invalid conversations format for sample {index}")
+                return None
+
+            for i in range(0, len(conversations) - 1, 2):
+                human = conversations[i]
+                gpt = conversations[i + 1]
+
+                if not isinstance(human, dict) or not isinstance(gpt, dict):
+                    print(f"Warning: Invalid conversation entry format for sample {index}")
+                    continue
+
+                if 'from' not in human or 'value' not in human or 'from' not in gpt or 'value' not in gpt:
+                    print(f"Warning: Missing 'from' or 'value' in conversation for sample {index}")
+                    continue
+
+                if human['from'].lower() != 'human' or gpt['from'].lower() != 'gpt':
+                    print(f"Warning: Incorrect conversation order for sample {index}")
+                    continue
+
+                human_value = human['value']
+                gpt_value = gpt['value']
+
+                if not isinstance(human_value, str) or not isinstance(gpt_value, str):
+                    print(f"Warning: 'value' is not a string for sample {index}")
+                    continue
+
+                combined_conversation = f"human: {human_value} gpt: {gpt_value}"
+                print(f"index: {index}, combined_conversation: {combined_conversation}")
+                processed_conversations.append(combined_conversation)
+
+            if not processed_conversations:
+                print(f"Warning: No valid conversations for sample {index}")
+                return None
+
             return index, {
-                'id': sample['id'],
+                'id': sample.get('id', str(index)),
                 'image': image_data,
-                'conversations': sample['conversations'],
+                'conversations': processed_conversations,
+                'source': sample.get('source', ''),
             }
         except Exception as e:
             print(f"Error processing sample {index}: {e}")

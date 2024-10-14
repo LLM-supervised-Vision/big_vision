@@ -29,7 +29,7 @@ case $dataset_config in
         num_samples=736936
         ;;
     "10M")
-        num_samples=9784500 # uncertain for now
+        num_samples=9784416 # uncertain for now
         ;;
     *)
         echo "Invalid dataset_config. Options are: 737k, 10M"
@@ -39,6 +39,11 @@ esac
 
 num_samples_per_job=40000
 num_jobs_per_split=16
+DEBUG=False
+if [ "$DEBUG" = True ]; then
+    num_samples_per_job=2
+    num_jobs_per_split=1
+fi
 
 num_jobs=$(( (num_samples + num_samples_per_job - 1) / num_samples_per_job ))
 num_splits=$(( (num_jobs + num_jobs_per_split - 1) / num_jobs_per_split ))
@@ -62,22 +67,3 @@ do
     echo "Split $i done"
     sleep 3
 done
-
-# # Merge dataset versions
-# echo "Merging dataset versions..."
-# python -c "
-# import tensorflow_datasets as tfds
-# import tensorflow as tf
-
-# builder = tfds.builder('cambrian_dataset', config='$dataset_config', data_dir='gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets')
-# builder.download_and_prepare(
-#     download_config=tfds.download.DownloadConfig(
-#         beam_options=tfds.core.BeamOptions(
-#             runner='DirectRunner',
-#             direct_num_workers=1,
-#             direct_running_mode='multi_processing',
-#         )
-#     )
-# )
-# print('Dataset merged successfully')
-# "
