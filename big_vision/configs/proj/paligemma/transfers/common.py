@@ -26,6 +26,13 @@ def tok(**kw):
   return f'tok({kw})'
 
 
+def tok_multi(**kw):
+  """Creates the tokenization preprocessing string."""
+  # Single entry point so that it's consistent everywhere and easier to switch.
+  kw.setdefault('model', TOKENIZER)
+  kw = ', '.join(f'{k}={repr(v)}' for k, v in kw.items())
+  return f'tok_multi({kw})'
+
 def combine_and_keep_train(text_len, before=(), sep='\n'):
   return '|'.join([
       *before,
@@ -63,3 +70,16 @@ def combine_and_keep_eval(text_len, keep=tuple(), before=(), sep='\n', eos='no')
       # 'keep(' + ', '.join(f'"{x}"' for x in (
       #     'image', 'text', 'mask_ar', 'mask_input') + tuple(keep)) + ')',
   ])
+
+def cambrian_pp(text_len, before=(), sep='\n'):
+    return '|'.join([
+        *before,
+        'process_conversations',
+        tok_multi(key='prefixes'),
+        tok_multi(key='suffixes'),
+        'masked_concat_multi(["prefixes", "suffixes"])',
+        f'tolen({text_len+1}, pad_value=0, key="text")',
+        f'tolen({text_len+1}, pad_value=1, key="mask_ar")',
+        f'tolen({text_len+1}, pad_value=0, key="mask_loss")',
+        'keep("image", "text", "mask_ar", "mask_loss")',
+    ])

@@ -39,10 +39,15 @@ esac
 
 num_samples_per_job=40000
 num_jobs_per_split=16
-DEBUG=False
+DEBUG=True
 if [ "$DEBUG" = True ]; then
     num_samples_per_job=2
     num_jobs_per_split=1
+    # check the existence of gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets/cambrian_dataset/737k/1.0.0
+    gcs_path="gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets/cambrian_dataset/$dataset_config/1.0.0"
+    if gsutil ls $gcs_path; then
+        gsutil -m rm -r $gcs_path
+    fi
 fi
 
 num_jobs=$(( (num_samples + num_samples_per_job - 1) / num_samples_per_job ))
@@ -61,6 +66,10 @@ do
             echo "Starting split $i, job $j, job_id $job_id, start_sample $((job_id * num_samples_per_job))"
             python /home/austinwang/austin_big_vision/scripts/20241012_cambrian_dataset_construction.py --config $dataset_config --job_id $job_id --num_jobs $num_jobs --gcs_tfds True &
             sleep 0.5
+            if [ "$DEBUG" = True ]; then
+                wait
+                exit 1
+            fi
         fi
     done
     wait

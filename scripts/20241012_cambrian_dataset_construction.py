@@ -33,7 +33,12 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
             features=tfds.features.FeaturesDict({
                 'id': tfds.features.Text(),
                 'image': tfds.features.Image(),
-                'conversations': tfds.features.Sequence(tfds.features.Text()),
+                # 'conversations': tfds.features.Sequence(tfds.features.Text()),
+                # 'conversations': tfds.features.Text(),
+                'conversations': tfds.features.Sequence({
+                    'from': tfds.features.Text(),
+                    'value': tfds.features.Text(),
+                }),
                 'source': tfds.features.Text(),
             }),
             supervised_keys=None,
@@ -108,6 +113,7 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
 
             conversations = sample.get('conversations', [])
             processed_conversations = []
+            all_conversations = ""
 
             if not isinstance(conversations, list) or len(conversations) < 2:
                 print(f"Warning: Invalid conversations format for sample {index}")
@@ -136,18 +142,18 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
                     print(f"Warning: 'value' is not a string for sample {index}")
                     continue
 
-                combined_conversation = f"human: {human_value} gpt: {gpt_value}"
-                # print(f"index: {index}, combined_conversation: {combined_conversation}")
-                processed_conversations.append(combined_conversation)
+                processed_conversations.append(f"human: {human_value} gpt: {gpt_value}")
+                all_conversations += f"human: {human_value} gpt: {gpt_value}"
+            # print(f"all_conversations: {all_conversations}")
 
-            if not processed_conversations:
+            if not processed_conversations or all_conversations == "":
                 print(f"Warning: No valid conversations for sample {index}")
                 return None
 
             return index, {
                 'id': sample.get('id', str(index)),
                 'image': image_data,
-                'conversations': processed_conversations,
+                'conversations': conversations,
                 'source': sample.get('source', ''),
             }
         except Exception as e:

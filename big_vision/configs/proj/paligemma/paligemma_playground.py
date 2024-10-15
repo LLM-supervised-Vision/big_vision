@@ -7,7 +7,7 @@ from ml_collections import ConfigDict
 
 import big_vision.configs.common as bvcc
 from big_vision.configs.proj.image_text import common
-from big_vision.configs.proj.paligemma.transfers.common import combine_and_keep_train, combine_and_keep_eval, TOKENIZER
+from big_vision.configs.proj.paligemma.transfers.common import combine_and_keep_train, combine_and_keep_eval,cambrian_pp,TOKENIZER
 
 def training_data(res, *, prefix, text_len=64, dataset_name='laion400m/images', org_caption_ratio=0.5):
     """Creates training data config."""
@@ -34,6 +34,11 @@ def training_data(res, *, prefix, text_len=64, dataset_name='laion400m/images', 
                 f'ratio_choice(inkey=["org_caption", "re_caption"], outkey="caption", ratios=[{org_caption_ratio}, {1-org_caption_ratio}])|'
                 f'copy(inkey="caption", outkey="suffix")',  # Change this line to use the chosen caption
                 combine_and_keep_train(text_len),
+            ])
+        case 'cambrian_dataset':
+            c.pp = '|'.join([
+                f'decode|resize({res})|value_range(-1,1)',
+                cambrian_pp(text_len),
             ])
         case _:
             raise ValueError(f"Unknown dataset_name: {dataset_name}")

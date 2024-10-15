@@ -189,3 +189,99 @@ def getidx(inkey, index_key, outkey=None):
     return data
   return _getidx
 
+
+@Registry.register("preprocess_ops.process_conversations")
+def get_process_conversations():
+  def _process_conversations(data):
+    from_tensor = data['conversations']['from']
+    value_tensor = data['conversations']['value']
+    
+    prefixes = tf.TensorArray(tf.string, size=0, dynamic_size=True)
+    suffixes = tf.TensorArray(tf.string, size=0, dynamic_size=True)
+    
+    def clean_tok_text(text):
+      # Remove '<image>' and '\n'
+      cleaned = tf.strings.strip(
+        tf.strings.regex_replace(text, '<image>|\\n', '')
+      )
+      return cleaned
+    
+    for i in tf.range(tf.shape(from_tensor)[0]):
+      cleaned = clean_tok_text(value_tensor[i])
+      if from_tensor[i] == b'human':
+          prefixes = prefixes.write(prefixes.size(), cleaned)
+      elif from_tensor[i] == b'gpt':
+          suffixes = suffixes.write(suffixes.size(), cleaned)
+    
+    data['prefixes'] = prefixes.stack()
+    data['suffixes'] = suffixes.stack()
+    
+    return data
+  
+  return _process_conversations
+
+@Registry.register("preprocess_ops.tok_multi")
+def get_tokenize_multi(model, *, key=None, inkey=None, outkey=None):
+    """Tokenizes multiple sentences without padding or truncation."""
+    outkey_ = outkey or key
+    inkey_ = inkey or key
+
+    tokenizer = bv_tok.get_tokenizer(model)
+
+    def _pp_tokenize_multi(data):
+        sentences = data[inkey_]
+        
+        def tokenize_single(sentence):
+            tokens = tokenizer.to_int_tf_op(sentence, bos=False, eos=False)
+            return tokens
+
+        tokenized = tf.map_fn(
+            tokenize_single,
+            sentences,
+            fn_output_signature=tf.RaggedTensorSpec(shape=[None], dtype=tf.int32, ragged_rank=0)
+        )
+        data[outkey_] = tokenized
+        return data
+
+    return _pp_tokenize_multi
+
+@Registry.register("preprocess_ops.masked_concat_multi")
+def get_masked_concat_multi(keys):
+    def _masked_concat_multi(data):
+        prefixes = data[keys[0]]
+        suffixes = data[keys[1]]
+        
+        bos_token = tf.constant([1], dtype=tf.int32)  # Assuming 1 is the BOS token ID
+        eos_token = tf.constant([2], dtype=tf.int32)  # Assuming 2 is the EOS token ID
+        sep_token = tf.constant([10], dtype=tf.int32)  # Assuming 10 is the newline token ID
+        
+        def interleave_conversations(inputs):
+            prefix, suffix = inputs
+            return tf.concat([prefix, sep_token, suffix, sep_token], axis=0)
+        
+        interleaved = tf.map_fn(
+            interleave_conversations,
+            (prefixes, suffixes),
+            fn_output_signature=tf.RaggedTensorSpec(shape=[None], dtype=tf.int32, ragged_rank=0)
+        )
+        
+        # Flatten the interleaved conversations and add BOS and EOS
+        flattened = interleaved.merge_dims(0, 1)
+        final_text = tf.concat([bos_token, flattened, eos_token], axis=0)
+        
+        # Create masks
+        text_length = tf.shape(final_text)[0]
+        mask_ar = tf.concat([
+            tf.zeros_like(bos_token, dtype=tf.int32),
+            tf.repeat([0, 1], tf.shape(prefixes)[0]),
+            tf.ones_like(eos_token, dtype=tf.int32)
+        ], axis=0)
+        mask_loss = mask_ar
+        
+        data['text'] = final_text
+        data['mask_ar'] = mask_ar
+        data['mask_loss'] = mask_loss
+        
+        return data
+    
+    return _masked_concat_multi
