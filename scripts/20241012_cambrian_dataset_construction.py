@@ -34,8 +34,6 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
             features=tfds.features.FeaturesDict({
                 'id': tfds.features.Text(),
                 'image': tfds.features.Image(),
-                # 'conversations': tfds.features.Sequence(tfds.features.Text()),
-                # 'conversations': tfds.features.Text(),
                 'conversations': tfds.features.Sequence({
                     'from': tfds.features.Text(),
                     'value': tfds.features.Text(),
@@ -53,7 +51,6 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
     def _generate_examples(self):
         dataset_paths = {
             "737k": "/mnt/disks/storage/data/finetune_data/jsons/737k.jsonl",
-            # "10M": "/mnt/disks/storage/data/finetune_data/clean_9784k.json",
             "10M": "gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets/cambrian_dataset/cambrian_dataset_10M.parquet",
         }
         dataset_path = dataset_paths[self.builder_config.name]
@@ -64,25 +61,24 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=multiprocessing.cpu_count() * 2) as executor:
             futures = []
-            for i, sample in enumerate(tqdm(self._load_samples(dataset_path), total=self.num_samples_per_job, desc=f"Submitting tasks (Batch {self.job_id + 1}/{self.num_jobs})")):
-                if start_sample <= i < end_sample:
-                    future = executor.submit(self._process_sample, i, sample, image_base_path)
-                    futures.append(future)
+            for i, sample in enumerate(tqdm(self._load_samples(dataset_path, start_sample, end_sample), 
+                                            total=self.num_samples_per_job, 
+                                            desc=f"Processing samples (Batch {self.job_id + 1}/{self.num_jobs})")):
+                future = executor.submit(self._process_sample, start_sample + i, sample, image_base_path)
+                futures.append(future)
 
-            for future in tqdm(concurrent.futures.as_completed(futures), 
-                               total=len(futures), 
-                               desc=f"Processing samples (Batch {self.job_id + 1}/{self.num_jobs})"):
+            for future in concurrent.futures.as_completed(futures):
                 result = future.result()
                 if result is not None:
                     yield result
 
-    def _load_samples(self, dataset_path):
+    def _load_samples(self, dataset_path, start_sample, end_sample):
         if dataset_path.endswith('.jsonl'):
             with open(dataset_path, 'r') as f:
                 for i, line in enumerate(f):
-                    if i >= self.job_id * self.num_samples_per_job:
+                    if start_sample <= i < end_sample:
                         yield json.loads(line)
-                    if i >= (self.job_id + 1) * self.num_samples_per_job:
+                    elif i >= end_sample:
                         break
         elif dataset_path.endswith('.parquet'):
             storage_client = storage.Client()
@@ -94,35 +90,33 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
             try:
                 with blob.open("rb") as f:
                     parquet_file = pq.ParquetFile(f)
-                    start_row = self.job_id * self.num_samples_per_job
-                    end_row = start_row + self.num_samples_per_job
+                    row_groups_to_read = self._get_row_groups_to_read(parquet_file, start_sample, end_sample)
 
-                    # Determine which row groups to read
-                    row_groups_to_read = []
                     current_row = 0
-                    for i in range(parquet_file.num_row_groups):
-                        row_group = parquet_file.metadata.row_group(i)
-                        next_row = current_row + row_group.num_rows
-                        if current_row <= end_row and next_row > start_row:
-                            row_groups_to_read.append(i)
-                        if next_row >= end_row:
-                            break
-                        current_row = next_row
-
-                    # Read only the necessary row groups
                     for row_group in row_groups_to_read:
                         table = parquet_file.read_row_group(row_group)
                         for row in table.to_pylist():
-                            if start_row <= current_row < end_row:
+                            if start_sample <= current_row < end_sample:
                                 yield row
-                            elif current_row >= end_row:
-                                return
                             current_row += 1
+                            if current_row >= end_sample:
+                                return
             except Exception as e:
                 print(f"Error reading Parquet file: {e}")
                 raise
-        else:
-            raise ValueError(f"Unsupported file format: {dataset_path}")
+
+    def _get_row_groups_to_read(self, parquet_file, start_sample, end_sample):
+        row_groups_to_read = []
+        current_row = 0
+        for i in range(parquet_file.num_row_groups):
+            row_group = parquet_file.metadata.row_group(i)
+            next_row = current_row + row_group.num_rows
+            if current_row <= end_sample and next_row > start_sample:
+                row_groups_to_read.append(i)
+            if next_row >= end_sample:
+                break
+            current_row = next_row
+        return row_groups_to_read
 
     def _process_sample(self, index, sample, image_base_path):
         try:
@@ -136,13 +130,11 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
                 image_data = image_file.read()
 
             conversations = sample.get('conversations', [])
-            processed_conversations = []
-            all_conversations = ""
-
             if not isinstance(conversations, list) or len(conversations) < 2:
                 print(f"Warning: Invalid conversations format for sample {index}")
                 return None
 
+            processed_conversations = []
             for i in range(0, len(conversations) - 1, 2):
                 human = conversations[i]
                 gpt = conversations[i + 1]
@@ -159,25 +151,17 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
                     print(f"Warning: Incorrect conversation order for sample {index}")
                     continue
 
-                human_value = human['value']
-                gpt_value = gpt['value']
+                processed_conversations.append(human)
+                processed_conversations.append(gpt)
 
-                if not isinstance(human_value, str) or not isinstance(gpt_value, str):
-                    print(f"Warning: 'value' is not a string for sample {index}")
-                    continue
-
-                processed_conversations.append(f"human: {human_value} gpt: {gpt_value}")
-                all_conversations += f"human: {human_value} gpt: {gpt_value}"
-
-            if not processed_conversations or all_conversations == "":
+            if not processed_conversations:
                 print(f"Warning: No valid conversations for sample {index}")
                 return None
-            # print(f"index: {index}, conversations: {all_conversations}")
 
             return index, {
                 'id': sample.get('id', str(index)),
                 'image': image_data,
-                'conversations': conversations,
+                'conversations': processed_conversations,
                 'source': sample.get('source', ''),
             }
         except Exception as e:
