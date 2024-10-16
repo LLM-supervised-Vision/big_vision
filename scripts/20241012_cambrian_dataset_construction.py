@@ -10,6 +10,8 @@ import multiprocessing
 import pyarrow.parquet as pq
 from google.cloud import storage
 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
 class CambrianDataset(tfds.core.GeneratorBasedBuilder):
     VERSION = None  # This will be set dynamically in __init__
     RELEASE_NOTES = {
@@ -58,12 +60,12 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
         image_base_path = "/mnt/disks/storage/data/finetune_data"
 
         start_sample = self.job_id * self.num_samples_per_job
-        end_sample = start_sample + self.num_samples_per_job
+        end_sample = min(start_sample + self.num_samples_per_job, self._get_total_samples(dataset_path))
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=multiprocessing.cpu_count() * 2) as executor:
             futures = []
             for i, sample in enumerate(tqdm(self._load_samples(dataset_path, start_sample, end_sample), 
-                                            total=self.num_samples_per_job, 
+                                            total=end_sample - start_sample, 
                                             desc=f"Processing samples (Batch {self.job_id + 1}/{self.num_jobs})")):
                 future = executor.submit(self._process_sample, start_sample + i, sample, image_base_path)
                 futures.append(future)
@@ -78,6 +80,21 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
             logging.info(f"Processed {processed_samples} samples for job {self.job_id}")
             if processed_samples == 0:
                 logging.warning(f"No samples were processed for job {self.job_id}")
+
+    def _get_total_samples(self, dataset_path):
+        if dataset_path.endswith('.jsonl'):
+            with open(dataset_path, 'r') as f:
+                return sum(1 for _ in f)
+        elif dataset_path.endswith('.parquet'):
+            storage_client = storage.Client()
+            bucket_name = dataset_path.split('/')[2]
+            blob_name = '/'.join(dataset_path.split('/')[3:])
+            bucket = storage_client.bucket(bucket_name)
+            blob = bucket.blob(blob_name)
+            with blob.open("rb") as f:
+                return pq.read_metadata(f).num_rows
+        else:
+            raise ValueError(f"Unsupported file format: {dataset_path}")
 
     def _load_samples(self, dataset_path, start_sample, end_sample):
         if dataset_path.endswith('.jsonl'):
