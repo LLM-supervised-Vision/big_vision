@@ -23,10 +23,11 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
         tfds.core.BuilderConfig(name="10M", description="Cambrian dataset with ~10M samples"),
     ]
 
-    def __init__(self, job_id=0, num_jobs=1, num_samples_per_job=40000, *args, **kwargs):
+    def __init__(self, job_id=0, num_jobs=1, num_samples_per_job=40000, use_parallel=True, *args, **kwargs):
         self.job_id = job_id
         self.num_jobs = num_jobs
         self.num_samples_per_job = num_samples_per_job
+        self.use_parallel = use_parallel
         self.__class__.VERSION = tfds.core.Version(f'1.0.{job_id}')
         super().__init__(*args, **kwargs)
 
@@ -62,16 +63,25 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
         start_sample = self.job_id * self.num_samples_per_job
         end_sample = min(start_sample + self.num_samples_per_job, self._get_total_samples(dataset_path))
 
+        samples = self._load_samples(dataset_path, start_sample, end_sample)
+        
+        if self.use_parallel:
+            yield from self._process_samples_parallel(samples, image_base_path, start_sample)
+        else:
+            yield from self._process_samples_sequential(samples, image_base_path, start_sample)
+
+    def _process_samples_parallel(self, samples, image_base_path, start_sample):
         with concurrent.futures.ThreadPoolExecutor(max_workers=multiprocessing.cpu_count() * 2) as executor:
             futures = []
-            for i, sample in enumerate(tqdm(self._load_samples(dataset_path, start_sample, end_sample), 
-                                            total=end_sample - start_sample, 
-                                            desc=f"Processing samples (Batch {self.job_id + 1}/{self.num_jobs})")):
+            for i, sample in enumerate(tqdm(samples, total=self.num_samples_per_job, 
+                                            desc=f"Submitting tasks (Batch {self.job_id + 1}/{self.num_jobs})")):
                 future = executor.submit(self._process_sample, start_sample + i, sample, image_base_path)
                 futures.append(future)
 
             processed_samples = 0
-            for future in concurrent.futures.as_completed(futures):
+            for future in tqdm(concurrent.futures.as_completed(futures), 
+                               total=len(futures), 
+                               desc=f"Processing samples (Batch {self.job_id + 1}/{self.num_jobs})"):
                 result = future.result()
                 if result is not None:
                     yield result
@@ -80,6 +90,19 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
             logging.info(f"Processed {processed_samples} samples for job {self.job_id}")
             if processed_samples == 0:
                 logging.warning(f"No samples were processed for job {self.job_id}")
+
+    def _process_samples_sequential(self, samples, image_base_path, start_sample):
+        processed_samples = 0
+        for i, sample in enumerate(tqdm(samples, total=self.num_samples_per_job, 
+                                        desc=f"Processing samples (Batch {self.job_id + 1}/{self.num_jobs})")):
+            result = self._process_sample(start_sample + i, sample, image_base_path)
+            if result is not None:
+                yield result
+                processed_samples += 1
+
+        logging.info(f"Processed {processed_samples} samples for job {self.job_id}")
+        if processed_samples == 0:
+            logging.warning(f"No samples were processed for job {self.job_id}")
 
     def _get_total_samples(self, dataset_path):
         if dataset_path.endswith('.jsonl'):
@@ -192,7 +215,7 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
             logging.error(f"Error processing sample {index}: {e}")
             return None
 
-def main(config, job_id, num_jobs, num_samples_per_job, local_data_dir, gcs_data_dir, gcs_tfds):
+def main(config, job_id, num_jobs, num_samples_per_job, local_data_dir, gcs_data_dir, gcs_tfds, use_parallel):
     data_dir = gcs_data_dir if gcs_tfds else local_data_dir
     try:
         builder = CambrianDataset(
@@ -200,11 +223,15 @@ def main(config, job_id, num_jobs, num_samples_per_job, local_data_dir, gcs_data
             job_id=job_id, 
             num_jobs=num_jobs, 
             num_samples_per_job=num_samples_per_job, 
+            use_parallel=use_parallel,
             version=f"1.0.{job_id}", 
             data_dir=data_dir
         )
         builder.download_and_prepare(
-            download_config=tfds.download.DownloadConfig(num_shards=1),
+            download_config=tfds.download.DownloadConfig(
+                download_mode=tfds.download.GenerateMode.REUSE_DATASET_IF_EXISTS,
+                num_shards=1,
+            ),
         )
         logging.info(f"Dataset batch {job_id + 1}/{num_jobs} has been prepared and stored in {data_dir}")
     except Exception as e:
@@ -220,6 +247,7 @@ if __name__ == "__main__":
     parser.add_argument("--local_data_dir", type=str, default="/home/austinwang/tensorflow_datasets", help="Local storage path")
     parser.add_argument("--gcs_data_dir", type=str, default="gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets", help="GCS path")
     parser.add_argument("--gcs_tfds", action="store_true", help="Store the TFDS dataset in GCS")
+    parser.add_argument("--use_parallel", action="store_true", help="Use parallel processing")
     args = parser.parse_args()
 
-    main(args.config, args.job_id, args.num_jobs, args.num_samples_per_job, args.local_data_dir, args.gcs_data_dir, args.gcs_tfds)
+    main(args.config, args.job_id, args.num_jobs, args.num_samples_per_job, args.local_data_dir, args.gcs_data_dir, args.gcs_tfds, args.use_parallel)
