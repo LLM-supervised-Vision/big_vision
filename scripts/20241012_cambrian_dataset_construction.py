@@ -20,9 +20,10 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
         tfds.core.BuilderConfig(name="10M", description="Cambrian dataset with ~10M samples"),
     ]
 
-    def __init__(self, job_id=0, num_jobs=1, *args, **kwargs):
+    def __init__(self, job_id=0, num_jobs=1, num_samples_per_job=40000, *args, **kwargs):
         self.job_id = job_id
         self.num_jobs = num_jobs
+        self.num_samples_per_job = num_samples_per_job
         self.__class__.VERSION = tfds.core.Version(f'1.0.{job_id}')
         super().__init__(*args, **kwargs)
 
@@ -58,16 +59,12 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
         dataset_path = dataset_paths[self.builder_config.name]
         image_base_path = "/mnt/disks/storage/data/finetune_data"
 
-        # Count total samples
-        total_samples = self._count_samples(dataset_path)
-
-        samples_per_job = total_samples // self.num_jobs
-        start_sample = self.job_id * samples_per_job
-        end_sample = start_sample + samples_per_job if self.job_id < self.num_jobs - 1 else total_samples
+        start_sample = self.job_id * self.num_samples_per_job
+        end_sample = start_sample + self.num_samples_per_job
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=multiprocessing.cpu_count() * 2) as executor:
             futures = []
-            for i, sample in enumerate(tqdm(self._load_samples(dataset_path), total=total_samples, desc=f"Submitting tasks (Batch {self.job_id + 1}/{self.num_jobs})")):
+            for i, sample in enumerate(tqdm(self._load_samples(dataset_path), total=self.num_samples_per_job, desc=f"Submitting tasks (Batch {self.job_id + 1}/{self.num_jobs})")):
                 if start_sample <= i < end_sample:
                     future = executor.submit(self._process_sample, i, sample, image_base_path)
                     futures.append(future)
@@ -79,27 +76,14 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
                 if result is not None:
                     yield result
 
-    def _count_samples(self, dataset_path):
-        if dataset_path.endswith('.jsonl'):
-            with open(dataset_path, 'r') as f:
-                return sum(1 for _ in f)
-        elif dataset_path.endswith('.json'):
-            with open(dataset_path, 'r') as f:
-                return len(json.load(f))
-        elif dataset_path.endswith('.parquet'):
-            return pq.read_metadata(dataset_path).num_rows
-        else:
-            raise ValueError(f"Unsupported file format: {dataset_path}")
-
     def _load_samples(self, dataset_path):
         if dataset_path.endswith('.jsonl'):
             with open(dataset_path, 'r') as f:
-                for line in f:
-                    yield json.loads(line)
-        elif dataset_path.endswith('.json'):
-            with open(dataset_path, 'r') as f:
-                for sample in json.load(f):
-                    yield sample
+                for i, line in enumerate(f):
+                    if i >= self.job_id * self.num_samples_per_job:
+                        yield json.loads(line)
+                    if i >= (self.job_id + 1) * self.num_samples_per_job:
+                        break
         elif dataset_path.endswith('.parquet'):
             storage_client = storage.Client()
             bucket_name = dataset_path.split('/')[2]
@@ -110,12 +94,8 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
             try:
                 with blob.open("rb") as f:
                     parquet_file = pq.ParquetFile(f)
-                    total_rows = parquet_file.metadata.num_rows
-                    rows_per_job = total_rows // self.num_jobs
-                    start_row = self.job_id * rows_per_job
-                    end_row = start_row + rows_per_job if self.job_id < self.num_jobs - 1 else total_rows
-
-                    print(f"Job {self.job_id}: Processing rows {start_row} to {end_row} (total rows: {total_rows})")
+                    start_row = self.job_id * self.num_samples_per_job
+                    end_row = start_row + self.num_samples_per_job
 
                     # Determine which row groups to read
                     row_groups_to_read = []
@@ -128,8 +108,6 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
                         if next_row >= end_row:
                             break
                         current_row = next_row
-
-                    print(f"Job {self.job_id}: Reading row groups {row_groups_to_read}")
 
                     # Read only the necessary row groups
                     for row_group in row_groups_to_read:
@@ -206,9 +184,16 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
             print(f"Error processing sample {index}: {e}")
             return None
 
-def main(config, job_id, num_jobs, local_data_dir, gcs_data_dir, gcs_tfds):
+def main(config, job_id, num_jobs, num_samples_per_job, local_data_dir, gcs_data_dir, gcs_tfds):
     data_dir = gcs_data_dir if gcs_tfds else local_data_dir
-    builder = CambrianDataset(config=config, job_id=job_id, num_jobs=num_jobs, version=f"1.0.{job_id}", data_dir=data_dir)
+    builder = CambrianDataset(
+        config=config, 
+        job_id=job_id, 
+        num_jobs=num_jobs, 
+        num_samples_per_job=num_samples_per_job, 
+        version=f"1.0.{job_id}", 
+        data_dir=data_dir
+    )
     builder.download_and_prepare(
         download_config=tfds.download.DownloadConfig(num_shards=16),
     )
@@ -217,11 +202,12 @@ def main(config, job_id, num_jobs, local_data_dir, gcs_data_dir, gcs_tfds):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process Cambrian dataset")
     parser.add_argument("--config", type=str, choices=["737k", "10M"], required=True, help="Dataset configuration to use")
-    parser.add_argument("--job_id", type=int, default=0, help="Job ID for this batch")
-    parser.add_argument("--num_jobs", type=int, default=1, help="Total number of jobs")
+    parser.add_argument("--job_id", type=int, required=True, help="Job ID for this batch")
+    parser.add_argument("--num_jobs", type=int, required=True, help="Total number of jobs")
+    parser.add_argument("--num_samples_per_job", type=int, required=True, help="Number of samples per job")
     parser.add_argument("--local_data_dir", type=str, default="/home/austinwang/tensorflow_datasets", help="Local storage path")
     parser.add_argument("--gcs_data_dir", type=str, default="gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets", help="GCS path")
-    parser.add_argument("--gcs_tfds", type=bool, default=False, help="Whether to store the TFDS dataset in GCS")
+    parser.add_argument("--gcs_tfds", action="store_true", help="Store the TFDS dataset in GCS")
     args = parser.parse_args()
 
-    main(args.config, args.job_id, args.num_jobs, args.local_data_dir, args.gcs_data_dir, args.gcs_tfds)
+    main(args.config, args.job_id, args.num_jobs, args.num_samples_per_job, args.local_data_dir, args.gcs_data_dir, args.gcs_tfds)

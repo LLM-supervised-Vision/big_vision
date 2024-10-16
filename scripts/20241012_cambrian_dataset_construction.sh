@@ -41,21 +41,27 @@ num_samples_per_job=40000
 num_jobs_per_split=16
 DEBUG=True
 if [ "$DEBUG" = True ]; then
-    num_samples_per_job=40000
-    num_jobs_per_split=1
-    # check the existence of gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets/cambrian_dataset/737k/1.0.0
-    gcs_path="gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets/cambrian_dataset/$dataset_config/1.0.0"
-    if gsutil ls $gcs_path; then
-        gsutil -m rm -r $gcs_path
-    fi
+    num_samples_per_job=4000
+    num_jobs_per_split=2
+    # remove 1.0.{0,..,num_jobs_per_split-1} directories
+    for i in $(seq 0 $((num_jobs_per_split-1)))
+    do
+        gcs_path="gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets/cambrian_dataset/$dataset_config/1.0.$i"
+        if gsutil ls $gcs_path; then
+            gsutil -m rm -r $gcs_path
+        fi
+    done
 fi
 
 num_jobs=$(( (num_samples + num_samples_per_job - 1) / num_samples_per_job ))
 num_splits=$(( (num_jobs + num_jobs_per_split - 1) / num_jobs_per_split ))
 
 echo "Dataset config: $dataset_config"
-echo "num_jobs $num_jobs"
-echo "num_splits $num_splits"
+echo "Total samples: $num_samples"
+echo "Samples per job: $num_samples_per_job"
+echo "Jobs per split: $num_jobs_per_split"
+echo "Number of jobs: $num_jobs"
+echo "Number of splits: $num_splits"
 
 for i in $(seq 0 $((num_splits-1)))
 do
@@ -63,16 +69,24 @@ do
     do
         job_id=$((i * num_jobs_per_split + j))
         if [ "$job_id" -lt "$num_jobs" ]; then
-            echo "Starting split $i, job $j, job_id $job_id, start_sample $((job_id * num_samples_per_job))"
-            python /home/austinwang/austin_big_vision/scripts/20241012_cambrian_dataset_construction.py --config $dataset_config --job_id $job_id --num_jobs $num_jobs --gcs_tfds True &
+            start_sample=$((job_id * num_samples_per_job))
+            echo "Starting split $i, job $j, job_id $job_id, start_sample $start_sample"
+            python /home/austinwang/austin_big_vision/scripts/20241012_cambrian_dataset_construction.py \
+                --config $dataset_config \
+                --job_id $job_id \
+                --num_jobs $num_jobs \
+                --num_samples_per_job $num_samples_per_job \
+                --gcs_tfds & 
             sleep 0.5
-            if [ "$DEBUG" = True ]; then
-                wait
-                exit 1
-            fi
         fi
     done
     wait
     echo "Split $i done"
+    if [ "$DEBUG" = True ]; then
+        wait
+        exit 1
+    fi
     sleep 3
 done
+
+echo "All splits completed. Dataset construction finished."
