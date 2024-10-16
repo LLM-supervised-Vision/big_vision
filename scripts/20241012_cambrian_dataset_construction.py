@@ -1,13 +1,12 @@
 import os
-import tensorflow as tf
 import tensorflow_datasets as tfds
 import json
-from PIL import Image
 from tqdm import tqdm
 import argparse
 import concurrent.futures
 import multiprocessing
-import time
+import pyarrow.parquet as pq
+from google.cloud import storage
 
 class CambrianDataset(tfds.core.GeneratorBasedBuilder):
     VERSION = None  # This will be set dynamically in __init__
@@ -52,7 +51,8 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
     def _generate_examples(self):
         dataset_paths = {
             "737k": "/mnt/disks/storage/data/finetune_data/jsons/737k.jsonl",
-            "10M": "/mnt/disks/storage/data/finetune_data/clean_9784k.json"
+            # "10M": "/mnt/disks/storage/data/finetune_data/clean_9784k.json",
+            "10M": "gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets/cambrian_dataset/cambrian_dataset_10M.parquet",
         }
         dataset_path = dataset_paths[self.builder_config.name]
         image_base_path = "/mnt/disks/storage/data/finetune_data"
@@ -85,6 +85,8 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
         elif dataset_path.endswith('.json'):
             with open(dataset_path, 'r') as f:
                 return len(json.load(f))
+        elif dataset_path.endswith('.parquet'):
+            return pq.read_metadata(dataset_path).num_rows
         else:
             raise ValueError(f"Unsupported file format: {dataset_path}")
 
@@ -97,6 +99,18 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
             with open(dataset_path, 'r') as f:
                 for sample in json.load(f):
                     yield sample
+        elif dataset_path.endswith('.parquet'):
+            storage_client = storage.Client()
+            bucket_name = dataset_path.split('/')[2]
+            blob_name = '/'.join(dataset_path.split('/')[3:])
+            bucket = storage_client.bucket(bucket_name)
+            blob = bucket.blob(blob_name)
+
+            with blob.open("rb") as f:
+                parquet_file = pq.ParquetFile(f)
+                for batch in parquet_file.iter_batches():
+                    for row in batch.to_pylist():
+                        yield row
         else:
             raise ValueError(f"Unsupported file format: {dataset_path}")
 
@@ -144,7 +158,6 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
 
                 processed_conversations.append(f"human: {human_value} gpt: {gpt_value}")
                 all_conversations += f"human: {human_value} gpt: {gpt_value}"
-            # print(f"all_conversations: {all_conversations}")
 
             if not processed_conversations or all_conversations == "":
                 print(f"Warning: No valid conversations for sample {index}")
@@ -164,7 +177,7 @@ def main(config, job_id, num_jobs, local_data_dir, gcs_data_dir, gcs_tfds):
     data_dir = gcs_data_dir if gcs_tfds else local_data_dir
     builder = CambrianDataset(config=config, job_id=job_id, num_jobs=num_jobs, version=f"1.0.{job_id}", data_dir=data_dir)
     builder.download_and_prepare(
-        download_config=tfds.download.DownloadConfig(num_shards=1),
+        download_config=tfds.download.DownloadConfig(num_shards=16),
     )
     print(f"Dataset batch {job_id + 1}/{num_jobs} has been prepared and stored in {data_dir}")
 
