@@ -41,7 +41,7 @@ num_samples_per_job=40000
 num_jobs_per_split=16
 DEBUG=True
 if [ "$DEBUG" = True ]; then
-    num_samples_per_job=20
+    num_samples_per_job=40000
     num_jobs_per_split=1
     # check the existence of gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets/cambrian_dataset/737k/1.0.0
     gcs_path="gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets/cambrian_dataset/$dataset_config/1.0.0"

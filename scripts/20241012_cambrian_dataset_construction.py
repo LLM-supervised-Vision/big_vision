@@ -1,5 +1,6 @@
 import os
 import tensorflow_datasets as tfds
+import pyarrow.dataset as ds
 import json
 from tqdm import tqdm
 import argparse
@@ -106,11 +107,42 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
             bucket = storage_client.bucket(bucket_name)
             blob = bucket.blob(blob_name)
 
-            with blob.open("rb") as f:
-                parquet_file = pq.ParquetFile(f)
-                for batch in parquet_file.iter_batches():
-                    for row in batch.to_pylist():
-                        yield row
+            try:
+                with blob.open("rb") as f:
+                    parquet_file = pq.ParquetFile(f)
+                    total_rows = parquet_file.metadata.num_rows
+                    rows_per_job = total_rows // self.num_jobs
+                    start_row = self.job_id * rows_per_job
+                    end_row = start_row + rows_per_job if self.job_id < self.num_jobs - 1 else total_rows
+
+                    print(f"Job {self.job_id}: Processing rows {start_row} to {end_row} (total rows: {total_rows})")
+
+                    # Determine which row groups to read
+                    row_groups_to_read = []
+                    current_row = 0
+                    for i in range(parquet_file.num_row_groups):
+                        row_group = parquet_file.metadata.row_group(i)
+                        next_row = current_row + row_group.num_rows
+                        if current_row <= end_row and next_row > start_row:
+                            row_groups_to_read.append(i)
+                        if next_row >= end_row:
+                            break
+                        current_row = next_row
+
+                    print(f"Job {self.job_id}: Reading row groups {row_groups_to_read}")
+
+                    # Read only the necessary row groups
+                    for row_group in row_groups_to_read:
+                        table = parquet_file.read_row_group(row_group)
+                        for row in table.to_pylist():
+                            if start_row <= current_row < end_row:
+                                yield row
+                            elif current_row >= end_row:
+                                return
+                            current_row += 1
+            except Exception as e:
+                print(f"Error reading Parquet file: {e}")
+                raise
         else:
             raise ValueError(f"Unsupported file format: {dataset_path}")
 
@@ -162,6 +194,7 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
             if not processed_conversations or all_conversations == "":
                 print(f"Warning: No valid conversations for sample {index}")
                 return None
+            # print(f"index: {index}, conversations: {all_conversations}")
 
             return index, {
                 'id': sample.get('id', str(index)),
