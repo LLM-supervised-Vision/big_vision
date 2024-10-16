@@ -1,4 +1,5 @@
 import os
+import logging
 import tensorflow_datasets as tfds
 import pyarrow.dataset as ds
 import json
@@ -67,10 +68,16 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
                 future = executor.submit(self._process_sample, start_sample + i, sample, image_base_path)
                 futures.append(future)
 
+            processed_samples = 0
             for future in concurrent.futures.as_completed(futures):
                 result = future.result()
                 if result is not None:
                     yield result
+                    processed_samples += 1
+
+            logging.info(f"Processed {processed_samples} samples for job {self.job_id}")
+            if processed_samples == 0:
+                logging.warning(f"No samples were processed for job {self.job_id}")
 
     def _load_samples(self, dataset_path, start_sample, end_sample):
         if dataset_path.endswith('.jsonl'):
@@ -102,7 +109,7 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
                             if current_row >= end_sample:
                                 return
             except Exception as e:
-                print(f"Error reading Parquet file: {e}")
+                logging.error(f"Error reading Parquet file: {e}")
                 raise
 
     def _get_row_groups_to_read(self, parquet_file, start_sample, end_sample):
@@ -122,7 +129,7 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
         try:
             image_file = sample.get('image')
             if not image_file or image_file in ['', 'None', 'none', 'nan']:
-                print(f"Warning: Invalid or missing image for sample {index}")
+                logging.warning(f"Invalid or missing image for sample {index}")
                 return None
 
             image_path = os.path.join(image_base_path, image_file)
@@ -131,7 +138,7 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
 
             conversations = sample.get('conversations', [])
             if not isinstance(conversations, list) or len(conversations) < 2:
-                print(f"Warning: Invalid conversations format for sample {index}")
+                logging.warning(f"Invalid conversations format for sample {index}")
                 return None
 
             processed_conversations = []
@@ -140,22 +147,22 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
                 gpt = conversations[i + 1]
 
                 if not isinstance(human, dict) or not isinstance(gpt, dict):
-                    print(f"Warning: Invalid conversation entry format for sample {index}")
+                    logging.warning(f"Invalid conversation entry format for sample {index}")
                     continue
 
                 if 'from' not in human or 'value' not in human or 'from' not in gpt or 'value' not in gpt:
-                    print(f"Warning: Missing 'from' or 'value' in conversation for sample {index}")
+                    logging.warning(f"Missing 'from' or 'value' in conversation for sample {index}")
                     continue
 
                 if human['from'].lower() != 'human' or gpt['from'].lower() != 'gpt':
-                    print(f"Warning: Incorrect conversation order for sample {index}")
+                    logging.warning(f"Incorrect conversation order for sample {index}")
                     continue
 
                 processed_conversations.append(human)
                 processed_conversations.append(gpt)
 
             if not processed_conversations:
-                print(f"Warning: No valid conversations for sample {index}")
+                logging.warning(f"No valid conversations for sample {index}")
                 return None
 
             return index, {
@@ -165,23 +172,27 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
                 'source': sample.get('source', ''),
             }
         except Exception as e:
-            print(f"Error processing sample {index}: {e}")
+            logging.error(f"Error processing sample {index}: {e}")
             return None
 
 def main(config, job_id, num_jobs, num_samples_per_job, local_data_dir, gcs_data_dir, gcs_tfds):
     data_dir = gcs_data_dir if gcs_tfds else local_data_dir
-    builder = CambrianDataset(
-        config=config, 
-        job_id=job_id, 
-        num_jobs=num_jobs, 
-        num_samples_per_job=num_samples_per_job, 
-        version=f"1.0.{job_id}", 
-        data_dir=data_dir
-    )
-    builder.download_and_prepare(
-        download_config=tfds.download.DownloadConfig(num_shards=16),
-    )
-    print(f"Dataset batch {job_id + 1}/{num_jobs} has been prepared and stored in {data_dir}")
+    try:
+        builder = CambrianDataset(
+            config=config, 
+            job_id=job_id, 
+            num_jobs=num_jobs, 
+            num_samples_per_job=num_samples_per_job, 
+            version=f"1.0.{job_id}", 
+            data_dir=data_dir
+        )
+        builder.download_and_prepare(
+            download_config=tfds.download.DownloadConfig(num_shards=1),
+        )
+        logging.info(f"Dataset batch {job_id + 1}/{num_jobs} has been prepared and stored in {data_dir}")
+    except Exception as e:
+        logging.error(f"Error processing job {job_id}: {e}")
+        raise
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process Cambrian dataset")
