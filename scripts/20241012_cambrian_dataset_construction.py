@@ -1,19 +1,19 @@
 import os
-import logging
+import tensorflow as tf
 import tensorflow_datasets as tfds
-import pyarrow.dataset as ds
 import json
+from google.cloud import storage
+import pyarrow.parquet as pq
+import io
+from PIL import Image
 from tqdm import tqdm
 import argparse
 import concurrent.futures
 import multiprocessing
-import pyarrow.parquet as pq
-from google.cloud import storage
-
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+import math
 
 class CambrianDataset(tfds.core.GeneratorBasedBuilder):
-    VERSION = None  # This will be set dynamically in __init__
+    VERSION = tfds.core.Version('1.0.0')
     RELEASE_NOTES = {
         '1.0.0': 'Initial release.',
     }
@@ -23,12 +23,11 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
         tfds.core.BuilderConfig(name="10M", description="Cambrian dataset with ~10M samples"),
     ]
 
-    def __init__(self, job_id=0, num_jobs=1, num_samples_per_job=40000, use_parallel=True, *args, **kwargs):
+    def __init__(self, job_id=0, num_jobs=1, use_parallel=True, *args, **kwargs):
         self.job_id = job_id
         self.num_jobs = num_jobs
-        self.num_samples_per_job = num_samples_per_job
         self.use_parallel = use_parallel
-        self.__class__.VERSION = tfds.core.Version(f'1.0.{job_id}')
+        self.storage_client = storage.Client()
         super().__init__(*args, **kwargs)
 
     def _info(self) -> tfds.core.DatasetInfo:
@@ -53,201 +52,150 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
         }
 
     def _generate_examples(self):
-        dataset_paths = {
-            "737k": "/mnt/disks/storage/data/finetune_data/jsons/737k.jsonl",
-            "10M": "gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets/cambrian_dataset/cambrian_dataset_10M.parquet",
-        }
-        dataset_path = dataset_paths[self.builder_config.name]
+        if self.builder_config.name == "737k":
+            yield from self._generate_737k_examples()
+        else:  # "10M"
+            yield from self._generate_10M_examples()
+
+    def _generate_737k_examples(self):
+        dataset_path = "/mnt/disks/storage/data/finetune_data/jsons/737k.jsonl"
         image_base_path = "/mnt/disks/storage/data/finetune_data"
 
-        start_sample = self.job_id * self.num_samples_per_job
-        end_sample = min(start_sample + self.num_samples_per_job, self._get_total_samples(dataset_path))
+        total_samples = sum(1 for _ in open(dataset_path))
+        samples_per_job = total_samples // self.num_jobs
+        start_sample = self.job_id * samples_per_job
+        end_sample = start_sample + samples_per_job if self.job_id < self.num_jobs - 1 else total_samples
 
-        samples = self._load_samples(dataset_path, start_sample, end_sample)
+        with open(dataset_path, 'r') as f:
+            for i, line in enumerate(tqdm(f, total=total_samples, desc=f"Processing 737k samples (Batch {self.job_id + 1}/{self.num_jobs})")):
+                if start_sample <= i < end_sample:
+                    sample = json.loads(line)
+                    processed_sample = self._process_sample(sample, image_base_path)
+                    if processed_sample:
+                        yield i, processed_sample
+
+    def _generate_10M_examples(self):
+        local_folder = "/home/austinwang/manual_cambrian_dataset"
+        gcs_folder = "tensorflow_datasets/tensorflow_datasets/downloads/manual_cambrian_dataset"
         
+        if not os.path.exists(local_folder):
+            self._download_from_gcs(gcs_folder, local_folder)
+
+        parquet_files = sorted([f for f in os.listdir(local_folder) if f.endswith('.parquet')])
+        total_files = len(parquet_files)
+        files_per_job = math.ceil(total_files / self.num_jobs)
+        start_file = self.job_id * files_per_job
+        end_file = min(start_file + files_per_job, total_files)
+
+        files_to_process = parquet_files[start_file:end_file]
+
         if self.use_parallel:
-            yield from self._process_samples_parallel(samples, image_base_path, start_sample)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=multiprocessing.cpu_count()) as executor:
+                futures = [executor.submit(self._process_parquet_file, os.path.join(local_folder, file)) for file in files_to_process]
+                for future in concurrent.futures.as_completed(futures):
+                    yield from future.result()
         else:
-            yield from self._process_samples_sequential(samples, image_base_path, start_sample)
+            for file in tqdm(files_to_process, desc=f"Processing 10M samples (Batch {self.job_id + 1}/{self.num_jobs})"):
+                yield from self._process_parquet_file(os.path.join(local_folder, file))
 
-    def _process_samples_parallel(self, samples, image_base_path, start_sample):
-        with concurrent.futures.ThreadPoolExecutor(max_workers=multiprocessing.cpu_count() * 2) as executor:
-            futures = []
-            for i, sample in enumerate(tqdm(samples, total=self.num_samples_per_job, 
-                                            desc=f"Submitting tasks (Batch {self.job_id + 1}/{self.num_jobs})")):
-                future = executor.submit(self._process_sample, start_sample + i, sample, image_base_path)
-                futures.append(future)
+    def _download_from_gcs(self, gcs_folder, local_folder):
+        os.makedirs(local_folder, exist_ok=True)
+        bucket = self.storage_client.bucket("us-central2-storage")
+        blobs = bucket.list_blobs(prefix=gcs_folder)
+        for blob in tqdm(blobs, desc="Downloading files from GCS"):
+            if blob.name.endswith('.parquet'):
+                local_file_path = os.path.join(local_folder, os.path.basename(blob.name))
+                blob.download_to_filename(local_file_path)
 
-            processed_samples = 0
-            for future in tqdm(concurrent.futures.as_completed(futures), 
-                               total=len(futures), 
-                               desc=f"Processing samples (Batch {self.job_id + 1}/{self.num_jobs})"):
-                result = future.result()
-                if result is not None:
-                    yield result
-                    processed_samples += 1
+    def _process_parquet_file(self, file_path):
+        table = pq.read_table(file_path)
+        df = table.to_pandas()
+        for _, row in df.iterrows():
+            sample = row.to_dict()
+            processed_sample = self._process_sample(sample)
+            if processed_sample:
+                yield sample['id'], processed_sample
 
-            logging.info(f"Processed {processed_samples} samples for job {self.job_id}")
-            if processed_samples == 0:
-                logging.warning(f"No samples were processed for job {self.job_id}")
-
-    def _process_samples_sequential(self, samples, image_base_path, start_sample):
-        processed_samples = 0
-        for i, sample in enumerate(tqdm(samples, total=self.num_samples_per_job, 
-                                        desc=f"Processing samples (Batch {self.job_id + 1}/{self.num_jobs})")):
-            result = self._process_sample(start_sample + i, sample, image_base_path)
-            if result is not None:
-                yield result
-                processed_samples += 1
-
-        logging.info(f"Processed {processed_samples} samples for job {self.job_id}")
-        if processed_samples == 0:
-            logging.warning(f"No samples were processed for job {self.job_id}")
-
-    def _get_total_samples(self, dataset_path):
-        if dataset_path.endswith('.jsonl'):
-            with open(dataset_path, 'r') as f:
-                return sum(1 for _ in f)
-        elif dataset_path.endswith('.parquet'):
-            storage_client = storage.Client()
-            bucket_name = dataset_path.split('/')[2]
-            blob_name = '/'.join(dataset_path.split('/')[3:])
-            bucket = storage_client.bucket(bucket_name)
-            blob = bucket.blob(blob_name)
-            with blob.open("rb") as f:
-                return pq.read_metadata(f).num_rows
-        else:
-            raise ValueError(f"Unsupported file format: {dataset_path}")
-
-    def _load_samples(self, dataset_path, start_sample, end_sample):
-        if dataset_path.endswith('.jsonl'):
-            with open(dataset_path, 'r') as f:
-                for i, line in enumerate(f):
-                    if start_sample <= i < end_sample:
-                        yield json.loads(line)
-                    elif i >= end_sample:
-                        break
-        elif dataset_path.endswith('.parquet'):
-            storage_client = storage.Client()
-            bucket_name = dataset_path.split('/')[2]
-            blob_name = '/'.join(dataset_path.split('/')[3:])
-            bucket = storage_client.bucket(bucket_name)
-            blob = bucket.blob(blob_name)
-
-            try:
-                with blob.open("rb") as f:
-                    parquet_file = pq.ParquetFile(f)
-                    row_groups_to_read = self._get_row_groups_to_read(parquet_file, start_sample, end_sample)
-
-                    current_row = 0
-                    for row_group in row_groups_to_read:
-                        table = parquet_file.read_row_group(row_group)
-                        for row in table.to_pylist():
-                            if start_sample <= current_row < end_sample:
-                                yield row
-                            current_row += 1
-                            if current_row >= end_sample:
-                                return
-            except Exception as e:
-                logging.error(f"Error reading Parquet file: {e}")
-                raise
-
-    def _get_row_groups_to_read(self, parquet_file, start_sample, end_sample):
-        row_groups_to_read = []
-        current_row = 0
-        for i in range(parquet_file.num_row_groups):
-            row_group = parquet_file.metadata.row_group(i)
-            next_row = current_row + row_group.num_rows
-            if current_row <= end_sample and next_row > start_sample:
-                row_groups_to_read.append(i)
-            if next_row >= end_sample:
-                break
-            current_row = next_row
-        return row_groups_to_read
-
-    def _process_sample(self, index, sample, image_base_path):
+    def _process_sample(self, sample, image_base_path=None):
         try:
             image_file = sample.get('image')
             if not image_file or image_file in ['', 'None', 'none', 'nan']:
-                logging.warning(f"Invalid or missing image for sample {index}")
+                print(f"Warning: Invalid or missing image for sample {sample.get('id')}")
                 return None
 
-            image_path = os.path.join(image_base_path, image_file)
-            with open(image_path, 'rb') as image_file:
-                image_data = image_file.read()
+            if image_base_path:
+                image_path = os.path.join(image_base_path, image_file)
+                with open(image_path, 'rb') as image_file:
+                    image_data = image_file.read()
+            else:
+                image_data = self._get_image_data(image_file)
 
             conversations = sample.get('conversations', [])
-            if not isinstance(conversations, list) or len(conversations) < 2:
-                logging.warning(f"Invalid conversations format for sample {index}")
-                return None
-
-            processed_conversations = []
-            for i in range(0, len(conversations) - 1, 2):
-                human = conversations[i]
-                gpt = conversations[i + 1]
-
-                if not isinstance(human, dict) or not isinstance(gpt, dict):
-                    logging.warning(f"Invalid conversation entry format for sample {index}")
-                    continue
-
-                if 'from' not in human or 'value' not in human or 'from' not in gpt or 'value' not in gpt:
-                    logging.warning(f"Missing 'from' or 'value' in conversation for sample {index}")
-                    continue
-
-                if human['from'].lower() != 'human' or gpt['from'].lower() != 'gpt':
-                    logging.warning(f"Incorrect conversation order for sample {index}")
-                    continue
-
-                processed_conversations.append(human)
-                processed_conversations.append(gpt)
+            processed_conversations = self._process_conversations(conversations)
 
             if not processed_conversations:
-                logging.warning(f"No valid conversations for sample {index}")
+                print(f"Warning: No valid conversations for sample {sample.get('id')}")
                 return None
 
-            return index, {
-                'id': sample.get('id', str(index)),
+            return {
+                'id': str(sample.get('id')),
                 'image': image_data,
                 'conversations': processed_conversations,
                 'source': sample.get('source', ''),
             }
         except Exception as e:
-            logging.error(f"Error processing sample {index}: {e}")
+            print(f"Error processing sample {sample.get('id')}: {e}")
             return None
 
-def main(config, job_id, num_jobs, num_samples_per_job, local_data_dir, gcs_data_dir, gcs_tfds, use_parallel):
+    def _get_image_data(self, image_path):
+        bucket = self.storage_client.bucket("us-central2-storage")
+        blob = bucket.blob(image_path)
+        try:
+            return blob.download_as_bytes()
+        except Exception as e:
+            print(f"Error downloading image {image_path}: {e}")
+            return None
+
+    def _process_conversations(self, conversations):
+        if not isinstance(conversations, list) or len(conversations) < 2:
+            return []
+
+        processed_conversations = []
+        for i in range(0, len(conversations) - 1, 2):
+            human = conversations[i]
+            gpt = conversations[i + 1]
+
+            if not isinstance(human, dict) or not isinstance(gpt, dict):
+                continue
+
+            if 'from' not in human or 'value' not in human or 'from' not in gpt or 'value' not in gpt:
+                continue
+
+            if human['from'].lower() != 'human' or gpt['from'].lower() != 'gpt':
+                continue
+
+            processed_conversations.append(human)
+            processed_conversations.append(gpt)
+
+        return processed_conversations
+
+def main(config, job_id, num_jobs, use_parallel, local_data_dir, gcs_data_dir, gcs_tfds):
     data_dir = gcs_data_dir if gcs_tfds else local_data_dir
-    try:
-        builder = CambrianDataset(
-            config=config, 
-            job_id=job_id, 
-            num_jobs=num_jobs, 
-            num_samples_per_job=num_samples_per_job, 
-            use_parallel=use_parallel,
-            version=f"1.0.{job_id}", 
-            data_dir=data_dir
-        )
-        builder.download_and_prepare(
-            download_config=tfds.download.DownloadConfig(
-                download_mode=tfds.download.GenerateMode.REUSE_DATASET_IF_EXISTS,
-                num_shards=1,
-            ),
-        )
-        logging.info(f"Dataset batch {job_id + 1}/{num_jobs} has been prepared and stored in {data_dir}")
-    except Exception as e:
-        logging.error(f"Error processing job {job_id}: {e}")
-        raise
+    builder = CambrianDataset(config=config, job_id=job_id, num_jobs=num_jobs, use_parallel=use_parallel, data_dir=data_dir)
+    builder.download_and_prepare(
+        download_config=tfds.download.DownloadConfig(num_shards=1),
+    )
+    print(f"Dataset batch {job_id + 1}/{num_jobs} has been prepared and stored in {data_dir}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process Cambrian dataset")
     parser.add_argument("--config", type=str, choices=["737k", "10M"], required=True, help="Dataset configuration to use")
-    parser.add_argument("--job_id", type=int, required=True, help="Job ID for this batch")
-    parser.add_argument("--num_jobs", type=int, required=True, help="Total number of jobs")
-    parser.add_argument("--num_samples_per_job", type=int, required=True, help="Number of samples per job")
+    parser.add_argument("--job_id", type=int, default=0, help="Job ID for this batch")
+    parser.add_argument("--num_jobs", type=int, default=1, help="Total number of jobs")
+    parser.add_argument("--use_parallel", type=bool, default=True, help="Whether to use parallel processing")
     parser.add_argument("--local_data_dir", type=str, default="/home/austinwang/tensorflow_datasets", help="Local storage path")
     parser.add_argument("--gcs_data_dir", type=str, default="gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets", help="GCS path")
-    parser.add_argument("--gcs_tfds", action="store_true", help="Store the TFDS dataset in GCS")
-    parser.add_argument("--use_parallel", action="store_true", help="Use parallel processing")
+    parser.add_argument("--gcs_tfds", type=bool, default=False, help="Whether to store the TFDS dataset in GCS")
     args = parser.parse_args()
 
-    main(args.config, args.job_id, args.num_jobs, args.num_samples_per_job, args.local_data_dir, args.gcs_data_dir, args.gcs_tfds, args.use_parallel)
+    main(args.config, args.job_id, args.num_jobs, args.use_parallel, args.local_data_dir, args.gcs_data_dir, args.gcs_tfds)
