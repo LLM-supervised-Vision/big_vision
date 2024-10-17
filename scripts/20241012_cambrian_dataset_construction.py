@@ -1,12 +1,10 @@
 import os
-import tensorflow as tf
 import tensorflow_datasets as tfds
 import json
 from google.cloud import storage
 import pyarrow.parquet as pq
-import io
-from PIL import Image
 from tqdm import tqdm
+import numpy as np
 import argparse
 import concurrent.futures
 import multiprocessing
@@ -33,7 +31,17 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
         self.storage_client = storage.Client()
         self.__class__.VERSION = tfds.core.Version(f'1.0.{job_id}')
         super().__init__(*args, **kwargs)
+
+        # Initialize paths
+        self.base_path = "/mnt/disks/storage/data/finetune_data"
+        self.image_base_path = self.base_path
+        self.dataset_path_737k = os.path.join(self.base_path, "jsons/737k.jsonl")
+        self.local_folder_10M = "/home/austinwang/manual_cambrian_dataset"
+        self.gcs_folder_10M = "tensorflow_datasets/tensorflow_datasets/downloads/manual_cambrian_dataset"
+
         logging.info(f"Initialized CambrianDataset with job_id={job_id}, num_jobs={num_jobs}, version={self.VERSION}")
+        logging.info(f"Base path: {self.base_path}")
+        logging.info(f"Image base path: {self.image_base_path}")
 
     def _info(self) -> tfds.core.DatasetInfo:
         logging.info("Calling _info method")
@@ -67,38 +75,34 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
 
     def _generate_737k_examples(self):
         logging.info("Starting _generate_737k_examples")
-        dataset_path = "/mnt/disks/storage/data/finetune_data/jsons/737k.jsonl"
-        image_base_path = "/mnt/disks/storage/data/finetune_data"
-
-        total_samples = sum(1 for _ in open(dataset_path))
-        samples_per_job = total_samples // self.num_jobs
+        total_samples = sum(1 for _ in open(self.dataset_path_737k))
+        samples_per_job = math.ceil(total_samples / self.num_jobs)
         start_sample = self.job_id * samples_per_job
-        end_sample = start_sample + samples_per_job if self.job_id < self.num_jobs - 1 else total_samples
+        end_sample = min(start_sample + samples_per_job, total_samples)
 
         logging.info(f"Processing samples from {start_sample} to {end_sample}")
 
-        with open(dataset_path, 'r') as f:
+        with open(self.dataset_path_737k, 'r') as f:
             for i, line in enumerate(tqdm(f, total=total_samples, desc=f"Processing 737k samples (Batch {self.job_id + 1}/{self.num_jobs})")):
                 if start_sample <= i < end_sample:
                     sample = json.loads(line)
-                    processed_sample = self._process_sample(sample, image_base_path)
+                    processed_sample = self._process_sample(sample)
                     if processed_sample:
                         yield i, processed_sample
 
     def _generate_10M_examples(self):
         logging.info("Starting _generate_10M_examples")
-        local_folder = "/home/austinwang/manual_cambrian_dataset"
-        gcs_folder = "tensorflow_datasets/tensorflow_datasets/downloads/manual_cambrian_dataset"
         
-        if not os.path.exists(local_folder):
-            logging.info(f"Local folder {local_folder} does not exist. Downloading from GCS.")
-            self._download_from_gcs(gcs_folder, local_folder)
+        if not os.path.exists(self.local_folder_10M):
+            logging.info(f"Local folder {self.local_folder_10M} does not exist. Downloading from GCS.")
+            self._download_from_gcs(self.gcs_folder_10M, self.local_folder_10M)
 
-        parquet_files = sorted([f for f in os.listdir(local_folder) if f.endswith('.parquet')])
+        parquet_files = sorted([f for f in os.listdir(self.local_folder_10M) if f.endswith('.parquet')])
         total_files = len(parquet_files)
         files_per_job = math.ceil(total_files / self.num_jobs)
         start_file = self.job_id * files_per_job
         end_file = min(start_file + files_per_job, total_files)
+
         logging.info(f"Processing {end_file - start_file} files from {start_file} to {end_file}")
         logging.info(f"Total files: {total_files}, Files per job: {files_per_job}")
 
@@ -107,13 +111,13 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
         if self.use_parallel:
             logging.info("Using parallel processing")
             with concurrent.futures.ThreadPoolExecutor(max_workers=multiprocessing.cpu_count()) as executor:
-                futures = [executor.submit(self._process_parquet_file, os.path.join(local_folder, file)) for file in files_to_process]
+                futures = [executor.submit(self._process_parquet_file, os.path.join(self.local_folder_10M, file)) for file in files_to_process]
                 for future in concurrent.futures.as_completed(futures):
                     yield from future.result()
         else:
             logging.info("Using sequential processing")
             for file in tqdm(files_to_process, desc=f"Processing 10M samples (Batch {self.job_id + 1}/{self.num_jobs})"):
-                yield from self._process_parquet_file(os.path.join(local_folder, file))
+                yield from self._process_parquet_file(os.path.join(self.local_folder_10M, file))
 
     def _download_from_gcs(self, gcs_folder, local_folder):
         logging.info(f"Downloading files from GCS: {gcs_folder} to {local_folder}")
@@ -135,19 +139,23 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
             if processed_sample:
                 yield sample['id'], processed_sample
 
-    def _process_sample(self, sample, image_base_path=None):
+    def _process_sample(self, sample):
         try:
             image_file = sample.get('image')
             if not image_file or image_file in ['', 'None', 'none', 'nan']:
                 logging.warning(f"Invalid or missing image for sample {sample.get('id')}")
                 return None
 
-            if image_base_path:
-                image_path = os.path.join(image_base_path, image_file)
+            image_path = os.path.join(self.image_base_path, image_file)
+            try:
                 with open(image_path, 'rb') as image_file:
                     image_data = image_file.read()
-            else:
-                image_data = self._get_image_data(image_file)
+            except FileNotFoundError:
+                logging.warning(f"Image file not found: {image_path}")
+                return None
+            except Exception as e:
+                logging.error(f"Error reading image {image_path}: {e}")
+                return None
 
             conversations = sample.get('conversations', [])
             processed_conversations = self._process_conversations(conversations)
@@ -166,16 +174,10 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
             logging.error(f"Error processing sample {sample.get('id')}: {e}")
             return None
 
-    def _get_image_data(self, image_path):
-        bucket = self.storage_client.bucket("us-central2-storage")
-        blob = bucket.blob(image_path)
-        try:
-            return blob.download_as_bytes()
-        except Exception as e:
-            logging.error(f"Error downloading image {image_path}: {e}")
-            return None
-
     def _process_conversations(self, conversations):
+        if isinstance(conversations, np.ndarray):
+            conversations = conversations.tolist()
+        
         if not isinstance(conversations, list) or len(conversations) < 2:
             return []
 
@@ -184,14 +186,9 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
             human = conversations[i]
             gpt = conversations[i + 1]
 
-            if not isinstance(human, dict) or not isinstance(gpt, dict):
-                continue
-
-            if 'from' not in human or 'value' not in human or 'from' not in gpt or 'value' not in gpt:
-                continue
-
-            if human['from'].lower() != 'human' or gpt['from'].lower() != 'gpt':
-                continue
+            if not isinstance(human, dict) or not isinstance(gpt, dict): continue
+            if 'from' not in human or 'value' not in human or 'from' not in gpt or 'value' not in gpt: continue
+            if human['from'].lower() != 'human' or gpt['from'].lower() != 'gpt': continue
 
             processed_conversations.append(human)
             processed_conversations.append(gpt)
@@ -214,7 +211,7 @@ def main(config, job_id, num_jobs, use_parallel, local_data_dir, gcs_data_dir, g
         download_config=tfds.download.DownloadConfig(num_shards=1),
     )
     
-    logging.info(f"Dataset batch {job_id + 1}/{num_jobs} (version {version}) has been prepared and stored in {data_dir}")
+    logging.info(f"Dataset batch {job_id + 1}/{num_jobs} (version {builder.VERSION}) has been prepared and stored in {data_dir}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process Cambrian dataset")

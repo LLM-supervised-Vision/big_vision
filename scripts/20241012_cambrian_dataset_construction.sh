@@ -27,9 +27,12 @@ dataset_config=$1
 case $dataset_config in
     "737k")
         num_samples=736936
+        num_samples_per_job=40000
         ;;
     "10M")
-        num_samples=9784416 # uncertain for now
+        num_samples=9784416
+        num_files=979  # Assuming 10,000 samples per file
+        num_files_per_job=4
         ;;
     *)
         echo "Invalid dataset_config. Options are: 737k, 10M"
@@ -37,69 +40,74 @@ case $dataset_config in
         ;;
 esac
 
-num_samples_per_job=40000
 num_jobs_per_split=16
+
 DEBUG=True
 if [ "$DEBUG" = True ]; then
-    num_samples_per_job=40000
+    if [ "$dataset_config" = "737k" ]; then
+        num_samples_per_job=1000
+    else
+        num_files_per_job=2
+    fi
     num_jobs_per_split=6
-    # remove 1.0.{0,..,num_jobs_per_split-1} directories
-    for i in $(seq 0 $((num_jobs_per_split-1)))
-    do
-        gcs_path="gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets/cambrian_dataset/$dataset_config/1.0.$i"
-        # if gsutil ls $gcs_path; then
-        #     gsutil -m rm -r $gcs_path
-        # fi
-    done
 fi
 
-num_jobs=$(( (num_samples + num_samples_per_job - 1) / num_samples_per_job ))
+if [ "$dataset_config" = "737k" ]; then
+    num_jobs=$(( (num_samples + num_samples_per_job - 1) / num_samples_per_job ))
+else
+    num_jobs=$(( (num_files + num_files_per_job - 1) / num_files_per_job ))
+fi
+
 num_splits=$(( (num_jobs + num_jobs_per_split - 1) / num_jobs_per_split ))
 
 echo "Dataset config: $dataset_config"
-echo "Total samples: $num_samples"
-echo "Samples per job: $num_samples_per_job"
+echo "Total samples/files: $num_samples"
+if [ "$dataset_config" = "737k" ]; then
+    echo "Samples per job: $num_samples_per_job"
+else
+    echo "Files per job: $num_files_per_job"
+fi
 echo "Jobs per split: $num_jobs_per_split"
 echo "Number of jobs: $num_jobs"
 echo "Number of splits: $num_splits"
 
-# Example job for debugging
-i=0
-j=3
-job_id=$((i * num_jobs_per_split + j))
-echo "Starting example job: split $i, job $j, job_id $job_id"
-python /home/austinwang/austin_big_vision/scripts/20241012_cambrian_dataset_construction.py \
-    --config $dataset_config \
-    --job_id $job_id \
-    --num_jobs $num_jobs \
-    --use_parallel True \
-    --gcs_tfds True
+# # Example job for debugging
+# i=0
+# j=0
+# job_id=$((i * num_jobs_per_split + j))
+# echo "Starting example job: split $i, job $j, job_id $job_id"
+# python /home/austinwang/austin_big_vision/scripts/20241012_cambrian_dataset_construction.py \
+#     --config $dataset_config \
+#     --job_id $job_id \
+#     --num_jobs $num_jobs \
+#     --use_parallel True \
+#     --gcs_tfds True
 
 # Uncomment the following loop for full execution
-# for i in $(seq 0 $((num_splits-1)))
-# do
-#     for j in $(seq 0 $((num_jobs_per_split-1)))
-#     do
-#         job_id=$((i * num_jobs_per_split + j))
-#         if [ "$job_id" -lt "$num_jobs" ]; then
-#             echo "Starting split $i, job $j, job_id $job_id"
-#             python /home/austinwang/austin_big_vision/scripts/20241012_cambrian_dataset_construction.py \
-#                 --config $dataset_config \
-#                 --job_id $job_id \
-#                 --num_jobs $num_jobs \
-#                 --use_parallel True \
-#                 --gcs_tfds True \
-#                 --local_data_dir "/home/austinwang/tensorflow_datasets" \
-#                 --gcs_data_dir "gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets" &
-#             sleep 0.5
-#         fi
-#     done
-#     wait
-#     echo "Split $i done"
-#     if [ "$DEBUG" = True ]; then
-#         exit 0
-#     fi
-#     sleep 3
-# done
+for i in $(seq 0 $((num_splits-1)))
+do
+    for j in $(seq 0 $((num_jobs_per_split-1)))
+    do
+        job_id=$((i * num_jobs_per_split + j))
+        if [ "$job_id" -lt "$num_jobs" ]; then
+            echo "Starting split $i, job $j, job_id $job_id"
+            python /home/austinwang/austin_big_vision/scripts/20241012_cambrian_dataset_construction.py \
+                --config $dataset_config \
+                --job_id $job_id \
+                --num_jobs $num_jobs \
+                --use_parallel True \
+                --gcs_tfds True \
+                --local_data_dir "/home/austinwang/tensorflow_datasets" \
+                --gcs_data_dir "gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets" &
+            sleep 0.5
+        fi
+    done
+    wait
+    echo "Split $i done"
+    if [ "$DEBUG" = True ]; then
+        exit 0
+    fi
+    sleep 3
+done
 
-# echo "All splits completed. Dataset construction finished."
+echo "All splits completed. Dataset construction finished."
