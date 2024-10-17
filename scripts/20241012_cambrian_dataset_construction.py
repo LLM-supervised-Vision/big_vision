@@ -16,7 +16,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 
 class CambrianDataset(tfds.core.GeneratorBasedBuilder):
-    VERSION = tfds.core.Version('1.0.0')
+    VERSION = None  # This will be set dynamically in __init__
     RELEASE_NOTES = {
         '1.0.0': 'Initial release.',
     }
@@ -27,12 +27,13 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
     ]
 
     def __init__(self, job_id=0, num_jobs=1, use_parallel=True, *args, **kwargs):
-        super().__init__(*args, **kwargs)
         self.job_id = job_id
         self.num_jobs = num_jobs
         self.use_parallel = use_parallel
         self.storage_client = storage.Client()
-        logging.info(f"Initialized CambrianDataset with job_id={job_id}, num_jobs={num_jobs}")
+        self.__class__.VERSION = tfds.core.Version(f'1.0.{job_id}')
+        super().__init__(*args, **kwargs)
+        logging.info(f"Initialized CambrianDataset with job_id={job_id}, num_jobs={num_jobs}, version={self.VERSION}")
 
     def _info(self) -> tfds.core.DatasetInfo:
         logging.info("Calling _info method")
@@ -199,15 +200,21 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
 
 def main(config, job_id, num_jobs, use_parallel, local_data_dir, gcs_data_dir, gcs_tfds):
     data_dir = gcs_data_dir if gcs_tfds else local_data_dir
-    builder = CambrianDataset(config=config, job_id=job_id, num_jobs=num_jobs, use_parallel=use_parallel, data_dir=data_dir)
-    builder.download_and_prepare(
-        download_config=tfds.download.DownloadConfig(
-            num_shards=1,
-            # download_mode=tfds.download.GenerateMode.FORCE_REDOWNLOAD,
-        ),
-        # download_and_prepare_kwargs={'force_prepare': True}
+
+    builder = CambrianDataset(
+        config=config,
+        job_id=job_id,
+        num_jobs=num_jobs,
+        use_parallel=use_parallel,
+        version=f"1.0.{job_id}", # Create a separate version for each job
+        data_dir=data_dir
     )
-    logging.info(f"Dataset batch {job_id + 1}/{num_jobs} has been prepared and stored in {data_dir}")
+    
+    builder.download_and_prepare(
+        download_config=tfds.download.DownloadConfig(num_shards=1),
+    )
+    
+    logging.info(f"Dataset batch {job_id + 1}/{num_jobs} (version {version}) has been prepared and stored in {data_dir}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process Cambrian dataset")
