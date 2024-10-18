@@ -47,9 +47,9 @@ if [ "$DEBUG" = True ]; then
     if [ "$dataset_config" = "737k" ]; then
         num_samples_per_job=1000
     else
-        num_files_per_job=2
+        num_files_per_job=4
     fi
-    num_jobs_per_split=6
+    num_jobs_per_split=1
 fi
 
 if [ "$dataset_config" = "737k" ]; then

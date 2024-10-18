@@ -49,13 +49,11 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
             builder=self,
             description=f"Cambrian {self.builder_config.name} dataset (Batch {self.job_id + 1} of {self.num_jobs})",
             features=tfds.features.FeaturesDict({
-                'id': tfds.features.Text(),
                 'image': tfds.features.Image(),
                 'conversations': tfds.features.Sequence({
                     'from': tfds.features.Text(),
                     'value': tfds.features.Text(),
                 }),
-                'source': tfds.features.Text(),
             }),
             supervised_keys=None,
         )
@@ -82,13 +80,15 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
 
         logging.info(f"Processing samples from {start_sample} to {end_sample}")
 
+        counter = 0
         with open(self.dataset_path_737k, 'r') as f:
             for i, line in enumerate(tqdm(f, total=total_samples, desc=f"Processing 737k samples (Batch {self.job_id + 1}/{self.num_jobs})")):
                 if start_sample <= i < end_sample:
                     sample = json.loads(line)
                     processed_sample = self._process_sample(sample)
                     if processed_sample:
-                        yield i, processed_sample
+                        yield counter, processed_sample
+                        counter += 1
 
     def _generate_10M_examples(self):
         logging.info("Starting _generate_10M_examples")
@@ -133,17 +133,19 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
         logging.info(f"Processing Parquet file: {file_path}")
         table = pq.read_table(file_path)
         df = table.to_pandas()
-        for _, row in df.iterrows():
+        file_id = file_path.split('part_')[1].split('.parquet')[0]
+        for counter, (_, row) in enumerate(df.iterrows()):
             sample = row.to_dict()
             processed_sample = self._process_sample(sample)
             if processed_sample:
-                yield sample['id'], processed_sample
+                sample_id = f"{file_id}_{counter}"
+                yield sample_id, processed_sample
 
     def _process_sample(self, sample):
         try:
             image_file = sample.get('image')
             if not image_file or image_file in ['', 'None', 'none', 'nan']:
-                logging.warning(f"Invalid or missing image for sample {sample.get('id')}")
+                logging.warning(f"Invalid or missing image for sample")
                 return None
 
             image_path = os.path.join(self.image_base_path, image_file)
@@ -161,17 +163,15 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
             processed_conversations = self._process_conversations(conversations)
 
             if not processed_conversations:
-                logging.warning(f"No valid conversations for sample {sample.get('id')}")
+                logging.warning(f"No valid conversations for sample")
                 return None
 
             return {
-                'id': str(sample.get('id')),
                 'image': image_data,
                 'conversations': processed_conversations,
-                'source': sample.get('source', ''),
             }
         except Exception as e:
-            logging.error(f"Error processing sample {sample.get('id')}: {e}")
+            logging.error(f"Error processing sample: {e}")
             return None
 
     def _process_conversations(self, conversations):
