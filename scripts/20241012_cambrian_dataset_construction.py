@@ -177,7 +177,7 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
             processed_conversations = self._process_conversations(conversations)
 
             if not processed_conversations:
-                logging.warning(f"No valid conversations for sample")
+                logging.warning(f"No valid conversations for sample, sample: {sample}")
                 return None
 
             processed_sample['conversations'] = processed_conversations
@@ -191,7 +191,7 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
             conversations = conversations.tolist()
         
         if not isinstance(conversations, list) or len(conversations) < 2:
-            return []
+            return
 
         processed_conversations = []
         for i in range(0, len(conversations) - 1, 2):
@@ -201,6 +201,9 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
             if not isinstance(human, dict) or not isinstance(gpt, dict): continue
             if 'from' not in human or 'value' not in human or 'from' not in gpt or 'value' not in gpt: continue
             if human['from'].lower() != 'human' or gpt['from'].lower() != 'gpt': continue
+            if len(human) != 2 or len(gpt) != 2: 
+                human = {k: v for k, v in human.items() if k in ['from', 'value']}
+                gpt = {k: v for k, v in gpt.items() if k in ['from', 'value']}
 
             processed_conversations.append(human)
             processed_conversations.append(gpt)
