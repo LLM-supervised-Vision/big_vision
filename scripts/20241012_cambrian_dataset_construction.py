@@ -1,15 +1,18 @@
 import os
-import tensorflow_datasets as tfds
+import math
 import json
-from google.cloud import storage
-import pyarrow.parquet as pq
+import logging
+import argparse
+import multiprocessing
+import concurrent.futures
+
 from tqdm import tqdm
 import numpy as np
-import argparse
-import concurrent.futures
-import multiprocessing
-import math
-import logging
+import pyarrow.parquet as pq
+import tensorflow as tf
+from google.cloud import storage
+import tensorflow_datasets as tfds
+
 
 logging.basicConfig(level=logging.INFO)
 
@@ -49,7 +52,7 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
             builder=self,
             description=f"Cambrian {self.builder_config.name} dataset (Batch {self.job_id + 1} of {self.num_jobs})",
             features=tfds.features.FeaturesDict({
-                'image': tfds.features.Image(),
+                'image': tfds.features.Sequence(tfds.features.Tensor(shape=(), dtype=tf.string)),
                 'conversations': tfds.features.Sequence({
                     'from': tfds.features.Text(),
                     'value': tfds.features.Text(),
@@ -137,28 +140,28 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
         for counter, (_, row) in enumerate(df.iterrows()):
             sample = row.to_dict()
             processed_sample = self._process_sample(sample)
+            sample_id = f"{file_id}_{counter}"
             if processed_sample:
-                sample_id = f"{file_id}_{counter}"
                 yield sample_id, processed_sample
+            else:
+                logging.warning(f"Error processing sample {sample_id}: {sample}")
+                exit()
 
     def _process_sample(self, sample):
         try:
-            image_file = sample.get('image')
-            if not image_file or image_file in ['', 'None', 'none', 'nan']:
-                logging.warning(f"Invalid or missing image for sample")
-                return None
-
-            image_path = os.path.join(self.image_base_path, image_file)
-            try:
-                with open(image_path, 'rb') as image_file:
-                    image_data = image_file.read()
-            except FileNotFoundError:
-                logging.warning(f"Image file not found: {image_path}")
-                return None
-            except Exception as e:
-                logging.error(f"Error reading image {image_path}: {e}")
-                return None
-
+            processed_sample = {'image': []}  # Initialize with an empty list
+            
+            image_file = sample.get('image', None)
+            if image_file and image_file not in ['', 'None', 'none', 'nan']:
+                image_path = os.path.join(self.image_base_path, image_file)
+                try:
+                    with open(image_path, 'rb') as image_file:
+                        processed_sample['image'] = [image_file.read()]  # Wrap in a list
+                except FileNotFoundError:
+                    logging.warning(f"Image file not found: {image_path}")
+                except Exception as e:
+                    logging.error(f"Error reading image {image_path}: {e}")
+            
             conversations = sample.get('conversations', [])
             processed_conversations = self._process_conversations(conversations)
 
@@ -166,14 +169,12 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
                 logging.warning(f"No valid conversations for sample")
                 return None
 
-            return {
-                'image': image_data,
-                'conversations': processed_conversations,
-            }
+            processed_sample['conversations'] = processed_conversations
+            return processed_sample
         except Exception as e:
             logging.error(f"Error processing sample: {e}")
             return None
-
+        
     def _process_conversations(self, conversations):
         if isinstance(conversations, np.ndarray):
             conversations = conversations.tolist()
@@ -208,7 +209,7 @@ def main(config, job_id, num_jobs, use_parallel, local_data_dir, gcs_data_dir, g
     )
     
     builder.download_and_prepare(
-        download_config=tfds.download.DownloadConfig(num_shards=1),
+        download_config=tfds.download.DownloadConfig(num_shards=16),
     )
     
     logging.info(f"Dataset batch {job_id + 1}/{num_jobs} (version {builder.VERSION}) has been prepared and stored in {data_dir}")
