@@ -116,11 +116,25 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
             with concurrent.futures.ThreadPoolExecutor(max_workers=multiprocessing.cpu_count()) as executor:
                 futures = [executor.submit(self._process_parquet_file, os.path.join(self.local_folder_10M, file)) for file in files_to_process]
                 for future in concurrent.futures.as_completed(futures):
-                    yield from future.result()
+                    try:
+                        for sample_id, sample in future.result():
+                            try:
+                                yield sample_id, sample
+                            except Exception as e:
+                                logging.error(f"Error yielding sample {sample_id}: {e}")
+                    except Exception as e:
+                        logging.error(f"Error processing file: {e}")
         else:
             logging.info("Using sequential processing")
             for file in tqdm(files_to_process, desc=f"Processing 10M samples (Batch {self.job_id + 1}/{self.num_jobs})"):
-                yield from self._process_parquet_file(os.path.join(self.local_folder_10M, file))
+                try:
+                    for sample_id, sample in self._process_parquet_file(os.path.join(self.local_folder_10M, file)):
+                        try:
+                            yield sample_id, sample
+                        except Exception as e:
+                            logging.error(f"Error yielding sample {sample_id}: {e}")
+                except Exception as e:
+                    logging.error(f"Error processing file {file}: {e}")
 
     def _download_from_gcs(self, gcs_folder, local_folder):
         logging.info(f"Downloading files from GCS: {gcs_folder} to {local_folder}")
@@ -143,9 +157,6 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
             sample_id = f"{file_id}_{counter}"
             if processed_sample:
                 yield sample_id, processed_sample
-            else:
-                logging.warning(f"Error processing sample {sample_id}: {sample}")
-                exit()
 
     def _process_sample(self, sample):
         try:

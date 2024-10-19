@@ -40,16 +40,16 @@ case $dataset_config in
         ;;
 esac
 
-num_jobs_per_split=16
+num_jobs_per_split=2
 
-DEBUG=True
+DEBUG=False
 if [ "$DEBUG" = True ]; then
     if [ "$dataset_config" = "737k" ]; then
         num_samples_per_job=1000
     else
         num_files_per_job=4
     fi
-    num_jobs_per_split=1
+    num_jobs_per_split=2
 fi
 
 if [ "$dataset_config" = "737k" ]; then
