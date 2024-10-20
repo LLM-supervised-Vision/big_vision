@@ -46,6 +46,22 @@ from big_vision.models.vit import MAPHead
 
 def get_config(variant):
   """Returns config for specified gemma variant."""
+  if variant == "gemma_debug":
+    return ml_collections.ConfigDict(
+        dict(
+            variant=variant,
+            width=32,
+            depth=2,
+            mlp_dim=128,
+            num_heads=2,
+            num_kv_heads=1,
+            head_dim=2,
+            norm_eps=1e-6,
+            vocab_size=256,
+            scan=False,
+            remat_policy="none",
+        )
+    )
   if variant == "gemma_6lyr":
     return ml_collections.ConfigDict(
         dict(

@@ -292,5 +292,9 @@ def get_config(arg=None):
       for k in c.evals: c.evals[k]['batch_size'] = 32
     else:
       c.evals = {}
+    c.model.img = dict(variant='mu/16', pool_type='none')
+    c.model.llm = dict(variant='gemma_debug')
+    c.model_init = None
+    c.model_load = {}
 
   return c
