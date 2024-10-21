@@ -241,6 +241,9 @@ def get_tokenize_multi(model, *, key=None, inkey=None, outkey=None):
             fn_output_signature=tf.RaggedTensorSpec(shape=[None], dtype=tf.int32, ragged_rank=0)
         )
         data[outkey_] = tokenized
+        data['bos_token'] = tokenizer.bos_token
+        data['eos_token'] = tokenizer.eos_token
+        data['pad_token'] = tokenizer.to_int_tf_op('\n')
         return data
 
     return _pp_tokenize_multi
@@ -251,9 +254,9 @@ def get_masked_concat_multi(keys):
         prefixes = data[keys[0]]
         suffixes = data[keys[1]]
         
-        bos_token = tf.constant([1], dtype=tf.int32)  # Assuming 1 is the BOS token ID
-        eos_token = tf.constant([2], dtype=tf.int32)  # Assuming 2 is the EOS token ID
-        sep_token = tf.constant([10], dtype=tf.int32)  # Assuming 10 is the newline token ID
+        bos_token = data['bos_token']
+        eos_token = data['eos_token']
+        sep_token = data['sep_token']
         
         def interleave_conversations(inputs):
             prefix, suffix = inputs
