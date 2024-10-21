@@ -1,3 +1,4 @@
+import io
 import os
 import math
 import json
@@ -6,10 +7,11 @@ import argparse
 import multiprocessing
 import concurrent.futures
 
-from tqdm import tqdm
 import numpy as np
-import pyarrow.parquet as pq
+from PIL import Image
+from tqdm import tqdm
 import tensorflow as tf
+import pyarrow.parquet as pq
 from google.cloud import storage
 import tensorflow_datasets as tfds
 
@@ -158,6 +160,18 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
             if processed_sample:
                 yield sample_id, processed_sample
 
+    def _process_and_store_image(self, image_path):
+        try:
+            with Image.open(image_path) as img:
+                img_rgb = img.convert('RGB')
+                buffer = io.BytesIO()
+                img_rgb.save(buffer, format='JPEG')
+                jpeg_bytes = buffer.getvalue()
+            return jpeg_bytes
+        except Exception as e:
+            print(f"Error processing image {image_path}: {e}")
+            return None
+
     def _process_sample(self, sample):
         try:
             processed_sample = {'image': []}  # Initialize with an empty list
@@ -165,13 +179,11 @@ class CambrianDataset(tfds.core.GeneratorBasedBuilder):
             image_file = sample.get('image', None)
             if image_file and image_file not in ['', 'None', 'none', 'nan']:
                 image_path = os.path.join(self.image_base_path, image_file)
-                try:
-                    with open(image_path, 'rb') as image_file:
-                        processed_sample['image'] = [image_file.read()]  # Wrap in a list
-                except FileNotFoundError:
-                    logging.warning(f"Image file not found: {image_path}")
-                except Exception as e:
-                    logging.error(f"Error reading image {image_path}: {e}")
+                jpeg_bytes = self._process_and_store_image(image_path)
+                if jpeg_bytes:
+                    processed_sample['image'] = [jpeg_bytes]  # Wrap in a list
+                else:
+                    logging.warning(f"Failed to process image: {image_path}")
             
             conversations = sample.get('conversations', [])
             processed_conversations = self._process_conversations(conversations)
@@ -223,7 +235,7 @@ def main(config, job_id, num_jobs, use_parallel, local_data_dir, gcs_data_dir, g
     )
     
     builder.download_and_prepare(
-        download_config=tfds.download.DownloadConfig(num_shards=16),
+        download_config=tfds.download.DownloadConfig(num_shards=4),
     )
     
     logging.info(f"Dataset batch {job_id + 1}/{num_jobs} (version {builder.VERSION}) has been prepared and stored in {data_dir}")

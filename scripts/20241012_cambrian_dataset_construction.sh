@@ -42,7 +42,7 @@ esac
 
 num_jobs_per_split=2
 
-DEBUG=False
+DEBUG=True
 if [ "$DEBUG" = True ]; then
     if [ "$dataset_config" = "737k" ]; then
         num_samples_per_job=1000
@@ -73,7 +73,7 @@ echo "Number of splits: $num_splits"
 
 # # Example job for debugging
 # i=0
-# j=0
+# j=1
 # job_id=$((i * num_jobs_per_split + j))
 # echo "Starting example job: split $i, job $j, job_id $job_id"
 # python /home/austinwang/austin_big_vision/scripts/20241012_cambrian_dataset_construction.py \
