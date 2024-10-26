@@ -190,6 +190,15 @@ def getidx(inkey, index_key, outkey=None):
   return _getidx
 
 
+@Registry.register("preprocess_ops.language_only_filtering")
+def get_language_only_filtering():
+  def _language_only_filtering(data):
+    has_image = data.get('has_image', True)
+    if not has_image:
+      data['has_image'] = False
+    return data
+  return _language_only_filtering
+
 @Registry.register("preprocess_ops.process_conversations")
 def get_process_conversations():
   def _process_conversations(data):
@@ -202,7 +211,8 @@ def get_process_conversations():
     def clean_tok_text(text):
       # Remove '<image>' and '\n'
       cleaned = tf.strings.strip(
-        tf.strings.regex_replace(text, '<image>|\\n', '')
+        tf.strings.regex_replace(text, '<image>', '')
+        # tf.strings.regex_replace(text, '<image>|\\n', '')
       )
       return cleaned
     
@@ -241,9 +251,9 @@ def get_tokenize_multi(model, *, key=None, inkey=None, outkey=None):
             fn_output_signature=tf.RaggedTensorSpec(shape=[None], dtype=tf.int32, ragged_rank=0)
         )
         data[outkey_] = tokenized
-        data['bos_token'] = tokenizer.bos_token
-        data['eos_token'] = tokenizer.eos_token
-        data['pad_token'] = tokenizer.to_int_tf_op('\n')
+        data['bos_token'] = tf.convert_to_tensor([tokenizer.bos_token], dtype=tf.int32)
+        data['eos_token'] = tf.convert_to_tensor([tokenizer.eos_token], dtype=tf.int32)
+        data['sep_token'] = tf.convert_to_tensor(tokenizer.to_int_tf_op('\n', bos=False, eos=False), dtype=tf.int32)
         return data
 
     return _pp_tokenize_multi
@@ -288,3 +298,67 @@ def get_masked_concat_multi(keys):
         return data
     
     return _masked_concat_multi
+
+import tensorflow as tf
+from PIL import Image
+import io
+import numpy as np
+
+@Registry.register("preprocess_ops.cambrian_image_pp")
+@utils.InKeyOutKey()
+def get_cambrian_image_pp(size=224, value_range=(-1, 1)):
+    """
+    Combined preprocessing function for Cambrian dataset images.
+    Handles scalar string input containing image bytes and gracefully handles decoding errors.
+    """
+    size = utils.maybe_repeat(size, 2)
+
+    def _cambrian_image_pp(image_bytes):
+        # tf.print("Input shape:", tf.shape(image_bytes))
+        # tf.print("Input dtype:", image_bytes.dtype)
+
+        def process_single_image(bytes_data):
+            # tf.print("Processing single image, bytes length:", tf.strings.length(bytes_data))
+            
+            # Decode image
+            try:
+                image = tf.io.decode_image(bytes_data, channels=3, expand_animations=False)
+                # tf.print("Decoded image shape:", tf.shape(image))
+            except tf.errors.InvalidArgumentError as e:
+                try:
+                    # pil_image = Image.open(io.BytesIO(bytes_data))
+                    pil_image = Image.open(bytes_data.numpy())
+                    pil_image = pil_image.convert('RGB')
+                    image = tf.convert_to_tensor(np.array(pil_image))
+                except Exception as e:
+                    tf.print(f"Error decoding image: {e}")
+                    exit()
+                    # return tf.zeros([size[0], size[1], 3], dtype=tf.float32)
+
+            # Resize image
+            image = tf.image.resize(image, size, method='bilinear', antialias=True)
+
+            # Convert to float and scale to desired value range
+            image = tf.cast(image, tf.float32)
+            image = (image - tf.reduce_min(image)) / (tf.reduce_max(image) - tf.reduce_min(image))
+            image = image * (value_range[1] - value_range[0]) + value_range[0]
+
+            return image
+
+        # Use tf.py_function to wrap the process_single_image function
+        def wrapped_process_single_image(bytes_data):
+            return tf.py_function(process_single_image, [bytes_data], tf.float32)
+
+        result = tf.cond(
+            tf.equal(tf.strings.length(image_bytes), 0),
+            lambda: tf.zeros([size[0], size[1], 3], dtype=tf.float32),
+            lambda: wrapped_process_single_image(image_bytes)
+        )
+        
+        # Ensure the result has the correct shape
+        result = tf.ensure_shape(result, [size[0], size[1], 3])
+        
+        # tf.print("Output shape:", tf.shape(result))
+        return result
+
+    return _cambrian_image_pp

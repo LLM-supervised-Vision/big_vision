@@ -48,8 +48,16 @@ def get_decode(channels=3, precise=False):
       return tf.image.decode_jpeg(  # Also supports png btw.
           image, channels=channels, dct_method="INTEGER_ACCURATE")
     else:
-      return tf.io.decode_image(
-          image, channels=channels, expand_animations=False)
+      try:
+        return tf.io.decode_image(
+            image, channels=channels, expand_animations=False)  
+      except Exception as e:
+        image_bytes = tf.cond(
+            tf.equal(tf.shape(image)[0], 0),
+            lambda: None,  # Empty string for empty list
+            lambda: image[0]   # First (and only) element for non-empty list
+        )
+        return tf.io.decode_image(image_bytes, channels=3, expand_animations=False)
 
   return _decode
 
