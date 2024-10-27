@@ -52,12 +52,11 @@ def get_decode(channels=3, precise=False):
         return tf.io.decode_image(
             image, channels=channels, expand_animations=False)  
       except Exception as e:
-        image_bytes = tf.cond(
+        return tf.cond(
             tf.equal(tf.shape(image)[0], 0),
-            lambda: None,  # Empty string for empty list
-            lambda: image[0]   # First (and only) element for non-empty list
+            lambda: tf.zeros([1, 1, 3], dtype=tf.uint8),
+            lambda: tf.io.decode_image(image[0], channels=3, expand_animations=False) # First (and only) element for non-empty list
         )
-        return tf.io.decode_image(image_bytes, channels=3, expand_animations=False)
 
   return _decode
 
