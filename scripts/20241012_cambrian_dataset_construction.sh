@@ -40,16 +40,16 @@ case $dataset_config in
         ;;
 esac
 
-num_jobs_per_split=2
+num_jobs_per_split=16
 
-DEBUG=True
+DEBUG=False
 if [ "$DEBUG" = True ]; then
     if [ "$dataset_config" = "737k" ]; then
         num_samples_per_job=1000
     else
         num_files_per_job=4
     fi
-    num_jobs_per_split=2
+    num_jobs_per_split=1
 fi
 
 if [ "$dataset_config" = "737k" ]; then
@@ -98,7 +98,7 @@ do
                 --use_parallel True \
                 --gcs_tfds True \
                 --local_data_dir "/home/austinwang/tensorflow_datasets" \
-                --gcs_data_dir "gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets" &
+                --gcs_data_dir "gs://us-central2-storage/tensorflow_datasets" &
             sleep 0.5
         fi
     done
