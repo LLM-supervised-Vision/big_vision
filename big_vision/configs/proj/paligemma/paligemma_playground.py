@@ -36,6 +36,7 @@ def training_data(res, *, prefix, text_len=64, dataset_name='laion400m/images', 
                 combine_and_keep_train(text_len),
             ])
         case 'cambrian_dataset':
+            c.data['data_dir'] = 'gs://us-central2-storage/tensorflow_datasets'
             c.pp = '|'.join([
                 f'decode|resize({res})|value_range(-1,1)',
                 cambrian_pp(text_len),
