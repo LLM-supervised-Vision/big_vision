@@ -37,7 +37,6 @@ def get_config(arg=None):
         llm_dropout=0.0,
         llm_clean_vocab=False,
         llm_projection=False,
-        llm_text_len=64,
         
         # Training params
         batch_size=8192,
@@ -53,10 +52,10 @@ def get_config(arg=None):
     )
 
     # Setup input pipeline
+    config.llm_text_len = config_utils.get_text_length(config.dataset_name, config.org_caption_ratio)
     config.input = config_utils.create_training_data_config(
         config.res,
         prefix='',
-        text_len=config.llm_text_len,
         dataset_name=config.dataset_name,
         org_caption_ratio=config.org_caption_ratio
     )

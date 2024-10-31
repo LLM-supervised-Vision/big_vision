@@ -23,14 +23,31 @@ DATASET_SIZES = {
 }
 
 
-def create_training_data_config(res, prefix, text_len=64, dataset_name='laion400m/images', org_caption_ratio=0.5):
+def get_text_length(dataset_name, org_caption_ratio=1.0):
+    """Determine text length based on dataset and settings.
+    
+    Args:
+        dataset_name: Name of the dataset
+        org_caption_ratio: Ratio of original captions (for datacomp_recap)
+        
+    Returns:
+        int: Appropriate text length for the dataset configuration
+    """
+    dataset_type = dataset_name.split("/")[0]
+    
+    if dataset_type == 'cambrian_dataset':return 256
+    elif dataset_type == 'datacomp_recap' and org_caption_ratio < 1.0:return 128
+    else: return 64 # laion400m or datacomp_recap with org_caption=1.0
+
+
+def create_training_data_config(res, prefix, dataset_name='laion400m/images', org_caption_ratio=0.5):
     """Creates training data configuration."""
     if not isinstance(res, int) or res <= 0:
         raise ValueError(f"Resolution must be a positive integer, got {res}")
-    if not isinstance(text_len, int) or text_len <= 0:
-        raise ValueError(f"Text length must be a positive integer, got {text_len}")
     if not isinstance(org_caption_ratio, float) or not 0 <= org_caption_ratio <= 1:
         raise ValueError(f"Original caption ratio must be between 0 and 1, got {org_caption_ratio}")
+    
+    text_len = get_text_length(dataset_name, org_caption_ratio)
     
     config = bvcc.parse_arg('')
     config.data = {
@@ -65,28 +82,43 @@ def create_training_data_config(res, prefix, text_len=64, dataset_name='laion400
     if dataset_type not in preprocessing_ops:
         raise ValueError(f"Unknown dataset_name: {dataset_name}")
         
+        
+    if dataset_type == 'cambrian_dataset':
+        config.data['data_dir'] = 'gs://us-central2-storage/tensorflow_datasets'
+        
+    
     if dataset_type == 'cambrian_dataset':
         config.data['data_dir'] = 'gs://us-central2-storage/tensorflow_datasets'
         
     config.pp = '|'.join(preprocessing_ops[dataset_type])
-    
     return config
 
 
 def calculate_total_steps(config):
-    """Calculate total steps based on epoch or total_samples."""
-    if config.epoch > 0 and config.total_steps > 0:
-        raise ValueError("Cannot specify both epoch and total_steps")
-    if config.epoch <= 0 and config.total_steps <= 0:
-        raise ValueError("Must specify either epoch or total_steps")
+    """Calculate total steps based on epoch, total_steps, or total_samples.
     
+    0. There must be only one positive value among epoch, total_steps, and total_samples.
+    1. If total_steps > 0: use explicit step count
+    2. If epoch > 0: calculate steps based on dataset size and epochs
+    3. If total_samples > 0: calculate steps based on total samples
+    4. If all are negative: raise error
+    """
+    if sum(x > 0 for x in [config.epoch, config.total_samples, config.total_steps])>1: 
+        raise ValueError("Only one of epoch, total_samples, or total_steps can be specified")
+
+    if config.total_steps > 0:
+        return config.total_steps
+        
     if config.epoch > 0:
         dataset_base = config.dataset_name.split(":")[0]
         if dataset_base not in DATASET_SIZES:
             raise ValueError(f"Unknown dataset: {dataset_base}")
         return int(DATASET_SIZES[dataset_base] * config.epoch / config.input.batch_size)
-    
-    return config.total_steps
+        
+    if config.total_samples > 0:
+        return int(config.total_samples * 1e9 / config.input.batch_size)
+        
+    raise ValueError("Must specify either total_steps, epoch, or total_samples")
 
 
 def setup_model_init_and_schedule(config):
@@ -97,21 +129,40 @@ def setup_model_init_and_schedule(config):
     # Set learning rates based on training mode
     vit_lr_mult = 1.0 if config.train_mode == 'pretrain' else 0.1
     config.lr_mults = [
-        ('img/.*', vit_lr_mult),  # Scale relative to base learning rate
+        ('img/.*', vit_lr_mult),
         ('llm/.*', config.llm_lr_mult),
         ('t', 1.0),
     ]
     
-    # Set model initialization based on training mode
+    # Handle ViT initialization based on training mode
     if config.train_mode == 'pretrain':
-        if config.model_init is not None:
-            raise ValueError("model_init should be None for pretraining")
+        if config.vit_backbone is not None:
+            raise ValueError("vit_backbone should be None for pretraining (random initialization)")
+        config.model_init = {'img': None, 'llm': None}  # Will be set by setup_model_config for LLM
     else:  # finetune
         if not config.vit_backbone:
-            raise ValueError("vit_backbone must be specified for finetuning")
-        if config.model_init is None:
-            config.model_init = {'img': config.vit_backbone, 'llm': None}
-
+            # Handle backbone selection for finetuning
+            if config.datacomp_backbone == 'gemma_supervised':
+                backbone = ("gs://us-central2-storage/tensorflow_datasets/mllm_ckpts/paligemma/"
+                           "gemma2b-partial_frozen99-0.01-gap_b16-F_contrastive_bs16k_s3b_lr1e-3_wd1e-4_bf16_09-01_0446")
+                ckpt_cfg_path = f'{backbone}/config.json'
+                ckpt_cfg = ml_collections.ConfigDict(json.load(tf.io.gfile.GFile(ckpt_cfg_path, 'r')))
+                config.model_init = f"{backbone}/checkpoint.bv-{ckpt_cfg.total_steps:09d}"
+                config.model = ckpt_cfg.model
+            elif config.datacomp_backbone == 'clip+llm':
+                backbone = ("gs://us-central2-storage/tensorflow_datasets/vit-b-16_3b_pretraining/"
+                           "clip_bs16384_warm0.03_lr1e-3_wd1e-4_bf16_qknorm-F_b2-0.95_12lyr_07-25_1415")
+                ckpt_cfg_path = f'{backbone}/config.json'
+                ckpt_cfg = ml_collections.ConfigDict(json.load(tf.io.gfile.GFile(ckpt_cfg_path, 'r')))
+                config.model_init = {'img': f"{backbone}/checkpoint.bv-{ckpt_cfg.total_steps:09d}:img", 'llm': None}
+                config.model.img = ckpt_cfg.model.image
+                config.model.img['pool_type'] = 'none'
+                if not hasattr(config, 'model_load') or config.model_load is None:
+                    config.model_load = {'img_load_kw': {'dont_load': ['head/.*']}}
+                else:
+                    config.model_load['img_load_kw'] = {'dont_load': ['head/.*']}
+            else:
+                raise ValueError("For finetuning, either vit_backbone or datacomp_backbone must be specified")
 
 def setup_model_config(config):
     """Setup model checkpoint loading and initialization configuration.
