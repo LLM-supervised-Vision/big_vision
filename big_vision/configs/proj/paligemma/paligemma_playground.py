@@ -87,7 +87,7 @@ def add_eval(c, res, *, text_len=64, prefix, mode, **kw):
       type='proj.paligemma.scoring_classifier',
       pred='score',
       log_percent=0.1,
-      data=dict(name='imagenet2012', split='validation'),
+      data=dict(name='imagenet2012', split='validation[:320]'),
       pp_fn=f'decode|resize({res})|keep("image", "label")',
       pp_txt=pp,
     )
@@ -282,13 +282,19 @@ def get_config(arg=None):
 
   if c.debug:
     c.wandb = False
-    c.input.shuffle_buffer_size = None
-    c.input.batch_size = 32
-    c.total_steps = 10
-    c.schedule = [('.*', dict(decay_type='cosine', warmup_steps=3))]
-    c.log_training_steps = 1
+    eval_only = False
+    if eval_only:
+      c.total_steps = 0
+      c.lr = 0.0
+      c.wd = 0.0
+    else:
+      c.input.shuffle_buffer_size = None
+      c.input.batch_size = 32
+      c.total_steps = 10
+      c.schedule = [('.*', dict(decay_type='cosine', warmup_steps=3))]
+      c.log_training_steps = 1
 
-    eval_when_debugging = True
+    eval_when_debugging = False
     if eval_when_debugging:
       for k in c.evals: c.evals[k]['batch_size'] = 32
     else:

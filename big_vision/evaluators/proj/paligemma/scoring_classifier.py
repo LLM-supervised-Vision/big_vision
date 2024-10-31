@@ -58,7 +58,10 @@ def scoring(predict_fn, tokenized_labels):
     batch = {**tokenized_labels, **batch}
     scores = predict_fn(train_state, batch, *a, **kw)
     predictions = jnp.argmax(scores, axis=-1)
-    return {"prec@1": predictions == batch["label"]}
+    out = predictions == batch["label"]
+    import logging
+    logging.info(f"accuracy: {out}")
+    return {"prec@1": out}
 
   return _scoring_fn
 
