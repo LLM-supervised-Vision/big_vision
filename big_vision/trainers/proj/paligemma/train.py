@@ -131,7 +131,7 @@ def main(argv):
     tag = "paligemma"
     wandb.init(
       project="llm-supervised-vision",
-      entity="nyu-visionx-org",
+      entity="nyu-visionx",
       tags=[tag],
       name=workdir.split("/")[-1] if workdir else f"{tag}_temp_experiment",
       job_type="train",
