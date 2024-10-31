@@ -1,3 +1,4 @@
+"""Configuration utilities for PaLiGeMMA training."""
 
 import logging
 import json
@@ -22,88 +23,63 @@ DATASET_SIZES = {
     'cambrian_dataset/10M': 9_784_414,
 }
 
+def get_text_length(config):
+    """Determine text length based on dataset and settings."""
+    dataset_type = config.dataset_name.split("/")[0]
+    if dataset_type == 'cambrian_dataset': 
+        return 256
+    elif dataset_type == 'datacomp_recap' and config.org_caption_ratio < 1.0: 
+        return 128
+    else: 
+        return 64 # laion400m or datacomp_recap with org_caption=1.0
 
-def get_text_length(dataset_name, org_caption_ratio=1.0):
-    """Determine text length based on dataset and settings.
-    
-    Args:
-        dataset_name: Name of the dataset
-        org_caption_ratio: Ratio of original captions (for datacomp_recap)
-        
-    Returns:
-        int: Appropriate text length for the dataset configuration
-    """
-    dataset_type = dataset_name.split("/")[0]
-    
-    if dataset_type == 'cambrian_dataset':return 256
-    elif dataset_type == 'datacomp_recap' and org_caption_ratio < 1.0:return 128
-    else: return 64 # laion400m or datacomp_recap with org_caption=1.0
-
-
-def create_training_data_config(res, prefix, dataset_name='laion400m/images', org_caption_ratio=0.5):
+def create_training_data_config(config):
     """Creates training data configuration."""
-    if not isinstance(res, int) or res <= 0:
-        raise ValueError(f"Resolution must be a positive integer, got {res}")
-    if not isinstance(org_caption_ratio, float) or not 0 <= org_caption_ratio <= 1:
-        raise ValueError(f"Original caption ratio must be between 0 and 1, got {org_caption_ratio}")
+    if not isinstance(config.res, int) or config.res <= 0:
+        raise ValueError(f"Resolution must be a positive integer, got {config.res}")
+    if not isinstance(config.org_caption_ratio, float) or not 0 <= config.org_caption_ratio <= 1:
+        raise ValueError(f"Original caption ratio must be between 0 and 1, got {config.org_caption_ratio}")
     
-    text_len = get_text_length(dataset_name, org_caption_ratio)
-    
-    config = bvcc.parse_arg('')
-    config.data = {
-        'name': dataset_name,
+    input_config = bvcc.parse_arg('')
+    input_config.data = {
+        'name': config.dataset_name,
         'split': 'train',
         'data_dir': 'gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets'
     }
     
-    dataset_type = dataset_name.split("/")[0]
+    dataset_type = config.dataset_name.split("/")[0]
     
     preprocessing_ops = {
         'laion400m': [
-            f'decode|resize({res})|value_range(-1,1)',
-            f'strfmt("{prefix}", outkey="prefix")',
+            f'decode|resize({config.res})|value_range(-1,1)',
+            'strfmt("", outkey="prefix")',
             'copy(inkey="caption", outkey="suffix")',
-            combine_and_keep_train(text_len),
+            combine_and_keep_train(config.llm_text_len),
         ],
         'datacomp_recap': [
-            f'decode|resize({res})|value_range(-1,1)',
-            f'strfmt("{prefix}", outkey="prefix")',
+            f'decode|resize({config.res})|value_range(-1,1)',
+            'strfmt("", outkey="prefix")',
             f'ratio_choice(inkey=["org_caption", "re_caption"], '
-            f'outkey="caption", ratios=[{org_caption_ratio}, {1-org_caption_ratio}])|'
+            f'outkey="caption", ratios=[{config.org_caption_ratio}, {1-config.org_caption_ratio}])|'
             f'copy(inkey="caption", outkey="suffix")',
-            combine_and_keep_train(text_len),
+            combine_and_keep_train(config.llm_text_len),
         ],
         'cambrian_dataset': [
-            f'decode|resize({res})|value_range(-1,1)',
-            cambrian_pp(text_len),
+            f'decode|resize({config.res})|value_range(-1,1)',
+            cambrian_pp(config.llm_text_len),
         ]
     }
     
     if dataset_type not in preprocessing_ops:
-        raise ValueError(f"Unknown dataset_name: {dataset_name}")
-        
-        
-    if dataset_type == 'cambrian_dataset':
-        config.data['data_dir'] = 'gs://us-central2-storage/tensorflow_datasets'
-        
+        raise ValueError(f"Unknown dataset_name: {dataset_type}")
     
-    if dataset_type == 'cambrian_dataset':
-        config.data['data_dir'] = 'gs://us-central2-storage/tensorflow_datasets'
-        
-    config.pp = '|'.join(preprocessing_ops[dataset_type])
-    return config
-
+    input_config.pp = '|'.join(preprocessing_ops[dataset_type])
+    input_config.batch_size = config.batch_size
+    return input_config
 
 def calculate_total_steps(config):
-    """Calculate total steps based on epoch, total_steps, or total_samples.
-    
-    0. There must be only one positive value among epoch, total_steps, and total_samples.
-    1. If total_steps > 0: use explicit step count
-    2. If epoch > 0: calculate steps based on dataset size and epochs
-    3. If total_samples > 0: calculate steps based on total samples
-    4. If all are negative: raise error
-    """
-    if sum(x > 0 for x in [config.epoch, config.total_samples, config.total_steps])>1: 
+    """Calculate total steps based on epoch, total_steps, or total_samples."""
+    if sum(x > 0 for x in [config.epoch, config.total_samples, config.total_steps]) > 1:
         raise ValueError("Only one of epoch, total_samples, or total_steps can be specified")
 
     if config.total_steps > 0:
@@ -163,6 +139,7 @@ def setup_model_init_and_schedule(config):
                     config.model_load['img_load_kw'] = {'dont_load': ['head/.*']}
             else:
                 raise ValueError("For finetuning, either vit_backbone or datacomp_backbone must be specified")
+    return config
 
 def setup_model_config(config):
     """Setup model checkpoint loading and initialization configuration.
@@ -304,57 +281,59 @@ def setup_model_config(config):
                 config.model_load = {'img_load_kw': {'dont_load': ['head/.*']}}
             else:
                 config.model_load['img_load_kw'] = {'dont_load': ['head/.*']}
+    return config
 
 
-def setup_evaluation_config(config, res, text_len=64, prefix='', mode='contrastive', **kwargs):
+def setup_evaluation_config(config):
     """Sets up evaluation configuration based on training mode."""
-    if mode not in ['contrastive', 'generative']:
-        raise ValueError(f"mode must be 'contrastive' or 'generative', got {mode}")
+    if config.mode not in ['contrastive', 'generative']:
+        raise ValueError(f"mode must be 'contrastive' or 'generative', got {config.mode}")
         
-    if mode == "contrastive":
+    if config.mode == "contrastive":
+        config.evals = {}  # Reset evals
         config.evals.retrieval_coco = common.get_coco(
             pred='contrastive_logits',
-            pp_img=f'resize({res})|value_range(-1, 1)',
+            pp_img=f'resize({config.res})|value_range(-1, 1)',
             pp_txt='|'.join([
-                f'strfmt("{prefix}", outkey="prefix")',
+                'strfmt("", outkey="prefix")',
                 'copy(inkey="texts", outkey="suffix")',
-                combine_and_keep_eval(text_len, eos='yes'),
-                f'copy(inkey="text", outkey="labels")',
+                combine_and_keep_eval(config.llm_text_len, eos='yes'),
+                'copy(inkey="text", outkey="labels")',
             ]),
-            log_steps=1000,
-            **kwargs
+            log_steps=1000
         )
         
         config.evals.zeroshot_imagenet = common.get_disclf(
             pred='contrastive_logits',
-            sz=res,
+            sz=config.res,
             pp_txt='|'.join([
-                f'strfmt("{prefix}", outkey="prefix")',
+                'strfmt("", outkey="prefix")',
                 'copy(inkey="texts", outkey="suffix")',
-                combine_and_keep_eval(text_len, eos='yes'),
-                f'copy(inkey="text", outkey="labels")',
+                combine_and_keep_eval(config.llm_text_len, eos='yes'),
+                'copy(inkey="text", outkey="labels")',
             ]),
             dataset_names=('imagenet2012', 'imagenet_v2', 'imagenet2012_real'),
-            log_steps=1000,
-            **kwargs
+            log_steps=1000
         )
         
     else:  # generative
         config.evals = {}
         pp = '|'.join([
-            f'strfmt("{prefix}", outkey="prefix")',
+            'strfmt("", outkey="prefix")',
             'copy(inkey="label", outkey="suffix")',
-            combine_and_keep_eval(text_len, keep=('text', 'mask_ar')),
-            f'copy(inkey="text", outkey="labels")',
+            combine_and_keep_eval(config.llm_text_len, keep=('text', 'mask_ar')),
+            'copy(inkey="text", outkey="labels")',
         ])
         config.evals['imagenet/scoring'] = {
             'type': 'proj.paligemma.scoring_classifier',
             'pred': 'score',
             'log_percent': 0.1,
             'data': {'name': 'imagenet2012', 'split': 'validation[:320]'},
-            'pp_fn': f'decode|resize({res})|keep("image", "label")',
+            'pp_fn': f'decode|resize({config.res})|keep("image", "label")',
             'pp_txt': pp,
         }
+    
+    return config
 
 
 def setup_debug_config(config, eval_only=False, eval_when_debugging=False, tiny_model=False):
@@ -383,3 +362,5 @@ def setup_debug_config(config, eval_only=False, eval_when_debugging=False, tiny_
         config.model.llm = dict(variant='gemma_debug')
         config.model_init = None
         config.model_load = {}
+
+    return config

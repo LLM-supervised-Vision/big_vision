@@ -83,7 +83,7 @@ def get_config(arg=None):
     ]
 
     # Setup model initialization and schedule based on training mode
-    config_utils.setup_model_init_and_schedule(config)
+    config = config_utils.setup_model_init_and_schedule(config)
 
     # Model configuration
     config.model_name = 'proj.paligemma.paligemma'
@@ -117,7 +117,7 @@ def get_config(arg=None):
         config.model['llm']['vocab_size'] = 256_000 + 1024 + 128
 
     # Setup model initialization and loading
-    config_utils.setup_model_config(config)
+    config = config_utils.setup_model_config(config)
 
     # FSDP strategy configuration
     config.mesh = [('data', -1)]
@@ -133,11 +133,11 @@ def get_config(arg=None):
     config.wandb = not config.debug
 
     # Setup evaluation
-    config_utils.setup_evaluation_config(config, config.res, prefix='', mode=config.mode, text_len=config.llm_text_len)
+    config = config_utils.setup_evaluation_config(config, config.res, prefix='', mode=config.mode, text_len=config.llm_text_len)
 
     # Debug mode settings
     if config.debug:
-        config_utils.setup_debug_config(
+        config = config_utils.setup_debug_config(
             config,
             eval_only=config.debug_eval_only,
             eval_when_debugging=config.debug_eval_when_debugging,
