@@ -270,25 +270,42 @@ def get_masked_concat_multi(keys):
         
         def interleave_conversations(inputs):
             prefix, suffix = inputs
-            return tf.concat([prefix, sep_token, suffix, sep_token], axis=0)
+            # For each prefix-suffix pair, we create sequence and corresponding mask
+            interleaved = tf.concat([prefix, sep_token, suffix, sep_token], axis=0)
+            # Generate mask: 0 for prefix and its sep_token, 1 for suffix and its sep_token
+            mask_prefix = tf.zeros_like(prefix, dtype=tf.int32)
+            mask_sep1 = tf.zeros_like(sep_token, dtype=tf.int32)
+            mask_suffix = tf.ones_like(suffix, dtype=tf.int32)
+            mask_sep2 = tf.ones_like(sep_token, dtype=tf.int32)
+            mask = tf.concat([mask_prefix, mask_sep1, mask_suffix, mask_sep2], axis=0)
+            return interleaved, mask
         
-        interleaved = tf.map_fn(
+        # Process each prefix-suffix pair
+        results = tf.map_fn(
             interleave_conversations,
             (prefixes, suffixes),
-            fn_output_signature=tf.RaggedTensorSpec(shape=[None], dtype=tf.int32, ragged_rank=0)
+            fn_output_signature=(
+                tf.RaggedTensorSpec(shape=[None], dtype=tf.int32, ragged_rank=0),
+                tf.RaggedTensorSpec(shape=[None], dtype=tf.int32, ragged_rank=0)
+            )
         )
         
-        # Flatten the interleaved conversations and add BOS and EOS
-        flattened = interleaved.merge_dims(0, 1)
-        final_text = tf.concat([bos_token, flattened, eos_token], axis=0)
+        # Separate interleaved text and masks
+        interleaved, masks = results
         
-        # Create masks
-        text_length = tf.shape(final_text)[0]
+        # Flatten the interleaved conversations and masks
+        flattened = interleaved.merge_dims(0, 1)
+        flattened_mask = masks.merge_dims(0, 1)
+        
+        # Add BOS and EOS tokens to text and corresponding masks
+        final_text = tf.concat([bos_token, flattened, eos_token], axis=0)
         mask_ar = tf.concat([
-            tf.zeros_like(bos_token, dtype=tf.int32),
-            tf.repeat([0, 1], tf.shape(prefixes)[0]),
-            tf.ones_like(eos_token, dtype=tf.int32)
+            tf.zeros_like(bos_token, dtype=tf.int32),  # mask for BOS
+            flattened_mask,                            # mask for interleaved content
+            tf.ones_like(eos_token, dtype=tf.int32)    # mask for EOS
         ], axis=0)
+        
+        # Use the same mask for loss
         mask_loss = mask_ar
         
         data['text'] = final_text
