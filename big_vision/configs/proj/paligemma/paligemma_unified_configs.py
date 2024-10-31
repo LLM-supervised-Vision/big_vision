@@ -1,191 +1,87 @@
-import os
-import logging
-import json
-import tensorflow as tf
-import ml_collections
-from ml_collections import ConfigDict
+"""Configuration for PaLiGeMMA training."""
 
 import big_vision.configs.common as bvcc
-from big_vision.configs.proj.image_text import common
-from big_vision.configs.proj.paligemma.transfers.common import combine_and_keep_train, combine_and_keep_eval, TOKENIZER
-
-def training_data(dataset_name, caption_key, *, res=224, prefix='', text_len=64):
-  assert dataset_name.split('/')[0] in ['laion400m', 'datacomp_recap'], f'Unknown dataset_name: {dataset_name}'
-  c = bvcc.parse_arg('') 
-  c.data = dict(
-    name=dataset_name,
-    split='train',
-    data_dir='gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets'
-  )
-  c.pp = '|'.join([
-    f'decode|resize({res})|value_range(-1,1)',
-    f'strfmt("{prefix}", outkey="prefix")',
-    f'copy(inkey="{caption_key}", outkey="suffix")',
-    combine_and_keep_train(text_len),
-  ])
-  return c
-
-def add_eval(c, res, *, text_len=64, prefix, mode, **kw):
-  if mode == "contrastive":
-    c.evals.retrieval_coco = common.get_coco(
-      pred='contrastive_logits',
-      pp_img=f'resize({res})|value_range(-1, 1)',
-      pp_txt='|'.join([
-        f'strfmt("{prefix}", outkey="prefix")',
-        'copy(inkey="texts", outkey="suffix")',
-        combine_and_keep_eval(text_len,eos='yes'),
-        f'copy(inkey="text", outkey="labels")',
-      ]),
-      log_steps=1000,
-    )
-    c.evals.retrieval_coco.update(kw)
-
-    c.evals.zeroshot_imagenet = common.get_disclf(
-      pred='contrastive_logits',
-      sz=res,
-      pp_txt='|'.join([
-        f'strfmt("{prefix}", outkey="prefix")',
-        'copy(inkey="texts", outkey="suffix")',
-        combine_and_keep_eval(text_len,eos='yes'),
-        f'copy(inkey="text", outkey="labels")',
-      ]),
-      dataset_names=('imagenet2012','imagenet_v2','imagenet2012_real'),
-      log_steps=1000,
-    )
-    c.evals.zeroshot_imagenet.update(kw)
-
-  elif mode == "generative":
-    c.evals = {}
-  #   pp = '|'.join([
-  #       f'strfmt("{prefix}", outkey="prefix")',
-  #       'copy(inkey="label", outkey="suffix")',
-  #       combine_and_keep_eval(text_len, keep=('text', 'mask_ar')),
-  #       f'copy(inkey="text", outkey="labels")',
-  #   ])
-  #   c.evals['imagenet/scoring'] = dict(
-  #     type='proj.cappa.scoring_classifier',
-  #     pred='score',
-  #     log_percent=0.1,
-  #     data=dict(name='imagenet2012', split='validation'),
-  #     pp_fn=f'decode|resize({res})|keep("image", "label")',
-  #     pp_txt=pp,
-  #   )
-  else:
-    raise ValueError(f"Unknown mode: {mode}")
-
-backbone_dict = {
-  'gemma_2b': 'gs://us-central2-storage/tensorflow_datasets/gemma2b.npz',
-  'clip': 'gs://us-central2-storage/tensorflow_datasets/vit-b-16_3b_pretraining/clip_bs16384_warm0.03_lr1e-3_wd1e-4_bf16_qknorm-F_b2-0.95_12lyr_07-25_1415',
-  'gemma_supervised': 'gs://us-central2-storage/tensorflow_datasets/mllm_ckpts/paligemma/gemma2b-partial_frozen99-0.01-gap_b16-F_contrastive_bs16k_s3b_lr1e-3_wd1e-4_bf16_09-01_0446',
-}
+import big_vision.configs.proj.paligemma.config_utils as config_utils
 
 def get_config(arg=None):
-  c = bvcc.parse_arg(
-    arg,
-    objective='contrastive', loss_fn='softmax', lr=1e-3, wd=1e-4, batch_size=16384, total_epochs=-1, total_samples=-1.0,
-    training_mode='pretrain', res=224, dataset_name='laion400m/images', caption_key='caption',
-    img_variant='B/16', img_trainable='full', img_beit_init=False, img_qknorm=False,
-    llm_variant='gemma_2b', llm_trainable='full', llm_head='none', llm_lr_mult=0.1, llm_dropout=0.0, llm_clean_vocab=False, llm_projection=False, llm_text_len=64, 
-    drop_path_rate=0.0, dtype='float32',
-    debug=False,
-	)
-  
-	# Input Data Section
-  c.input = training_data(dataset_name=c.dataset_name, caption_key=c.caption_key, res=c.res, prefix='', text_len=c.llm_text_len)
-  c.input.batch_size = c.batch_size
-  if c.total_epochs > 0:
-    assert c.total_samples < 0, "total_epochs and total_samples cannot be specified together"
-    c.total_steps = c.total_epochs * c.input.total_samples // c.batch_size
-  elif c.total_samples > 0:
-    c.total_steps = c.total_samples // c.batch_size
-  else:
-    raise ValueError("Either total_epochs or total_samples must be specified")
-  
-  # Model Config Section
-  c.model_name = 'proj.paligemma.paligemma'
-  c.model = dict(
-    temperature_init = 1/0.07 if c.loss_fn == 'softmax' else 10.0,
-    bias_init = None if c.loss_fn == 'softmax' else -10.0,
-  )
-  c.model.img = dict(
-    variant=c.img_variant,
-    posemb='learn', rep_size=False, dropout=0.0, pool_type='none', 
-    head_zeroinit=False, beit_init=c.img_beit_init, mask=None, normalize_qk=c.img_qknorm, scan=True, 
-    remat_policy='nothing_saveable', dtype_mm=c.dtype, proj_bias=False, drop_path_rate=c.drop_path_rate,
-  )
-  c.model.llm = dict(
-    variant=c.llm_variant, 
-    scan=True, remat_policy='nothing_saveable', vocab_size=None, dropout=c.llm_dropout, 
-    dropout_bdims=(), cache_dtype=None, dtype=c.dtype, lyrs_frozen=-1, head=c.llm_head, 
-    projection=c.llm_projection, proj_bias=False, drop_path_rate=c.drop_path_rate,
-  )
-  if not c.llm_clean_vocab: c.model.llm['vocab_size'] = 256_000 + 1024 + 128
-  if c.loss_fn == 'sigmoid': c.model.img['proj_bias'], c.model.llm['proj_bias'] = True, True
-  if 'partial_frozen:' in c.llm_trainable: 
-    c.llm_trainable, lyrs_frozen = c.llm_trainable.split(':')
-    c.model.llm['lyrs_frozen'] = int(lyrs_frozen)
+    """Creates the main configuration."""
+    config = bvcc.parse_arg(
+        arg,
+        # Default values
+        res=224,
+        mode='generative',
+        train_mode='pretrain',  # or 'finetune'
+        loss_fn='softmax',
+        dataset_name='laion400m/images', # laion400m/images, datacomp_recap/10M:1.0.0, datacomp_recap/50M:1.0.0, cambrian_dataset/10M:1.0.0,
+        org_caption_ratio=1.0, # only for datacomp_recap
+        
+        # Model configs
+        drop_path_rate=0.0,
+        freeze_vit=False,
+        vit_backbone=None,
+        img_variant='B/16',
+        img_beit_init=False,
+        img_qknorm=False,
+        freeze_llm=False,
+        llm_variant='gemma_2b',
+        llm_ckpt="partial_frozen:9", # partial_frozen:9, full
+        llm_head='gap', # 'none', 'gap', 'map'
+        llm_lr_mult=0.01, # 0.01, 0.1
+        llm_dropout=0.0,
+        llm_clean_vocab=True,
+        llm_projection=True,
+        
+        # Training params
+        lr=1e-3,
+        wd=1e-4,
+        epoch=-1.0,
+        total_steps=-1,
+        total_samples=-1,
+        warmup_percent=0.03,
+        batch_size=16384,
+        dtype='bfloat16', # 'float32', 'bfloat16'
+        
+        # Debug options
+        debug=False,
+        debug_eval_only=False,
+        debug_eval_when_debugging=False,
+        debug_tiny_model=False,
+    )
 
-  # Model Initialization Section
-  c.model_init = {'img': None, 'llm': None}
-  if c.training_mode.split('_')[0] == 'pretrain':
-    # model = scratch vit + pre-trained gemma_2b
-    llm_backbone = backbone_dict[c.llm_variant]
-    c.model_init['llm'] = llm_backbone
-  elif c.training_mode.split('_')[0] == 'finetune': 
-    assert c.training_mode.split('_')[1] in ['clip+llm','gemma_supervised'], f'Unknown training_mode: {c.training_mode}'
-    backbone = backbone_dict[c.training_mode.split('_')[1]]
-    ckpt_cfg_path = f'{backbone}/config.json'
-    ckpt_cfg = ml_collections.ConfigDict(json.load(tf.io.gfile.GFile(ckpt_cfg_path, 'r')))
-    if backbone == 'gemma_supervised':
-      c.model_init = f"{backbone}/checkpoint.bv-{ckpt_cfg.total_steps:09d}"
-      c.model = ckpt_cfg.model
-    elif backbone == 'clip+llm':
-      c.model_init['img'] = f"{backbone}/checkpoint.bv-{ckpt_cfg.total_steps:09d}:img"
-      c.model.img = ckpt_cfg.model.image
-      c.model.img['pool_type'] = 'none'
+    # Setup input pipeline
+    config.llm_text_len = config_utils.get_text_length(config)
+    config.input = config_utils.create_training_data_config(config, prefix='')
+    
+    # Optimizer configuration
+    config.optax_name = 'scale_by_adam'
+    config.optax = {'b1': 0.9, 'b2': 0.95}
+    config.lr = config.lr
+    config.wd = config.wd
+    config.grad_clip_norm = 1.0
+    config.label_smoothing = 0.0
+    config.total_steps = config_utils.calculate_total_steps(config)
 
-  # model_load
-  dont_load = []
-  if c.model.llm['head'] == 'map': dont_load += ['MAPHead.*']
-  if c.model.llm['head'] == 'ffn': dont_load += ['FFNAdapter.*'] 
-  if c.model.llm['projection']: dont_load += ['head/.*']
-  c.model_load = {'img_load_kw': {}, 'llm_load_kw': {'dont_load': dont_load}}
+    # Setup model initialization and loading
+    config = config_utils.setup_model_config(config)
 
+    # FSDP strategy configuration
+    config.mesh = [('data', -1)]
+    config.sharding_strategy = [('.*', 'fsdp(axis="data")')]
+    config.sharding_rules = [('act_batch', ('data',))]
 
-  # Training Section
+    # Misc configuration
+    config.input.shuffle_buffer_size = 50_000
+    config.log_training_steps = 50
+    config.ckpt_steps = 1_000
+    config.pp_modules = ['ops_general', 'ops_image', 'ops_text', 'proj.paligemma.ops']
+    config.seed = 0
+    config.wandb = not config.debug
 
-  # schedule
-  sched = dict(decay_type='cosine', warmup_percent=0.03)
-  c.schedule = [('.*', sched)]
-  if not c.img_trainable == 'frozen' and not c.llm_trainable == 'frozen':
-    c.lr_mults = [
-      ('img/.*', 1.0),
-      ('llm/.*', c.llm_lr_mult),
-      ('t', 1.0),
-    ]
-  match c.llm_trainable:
-    case 'full':
-      pass
-    case 'partial_frozen':
-      c.schedule = [
-        ('img/.*', None if c.freeze_vit else sched),
-        ('llm/layers/frozen/.*', None),
-        ('.*', sched),
-      ]
-    case 'adapter':
-      # Unfreeze the adapter only for llm
-      assert c.llm_head == 'ffn', "adapter is for ffn head"
-      assert c.llm_projection == False, "adapter is for ffn head"
-      c.schedule = [
-        ('img/.*', None if c.freeze_vit else sched),
-        ('.*Adapter/.*', sched),
-        ('t', sched),
-        ('.*', None),
-      ]
-    case _:
-      raise ValueError(f"Unknown llm_trainable: {c.llm_trainable}")
+    # Setup evaluation
+    config = config_utils.setup_evaluation_config(config, prefix='')
 
-  # FSDP strategy.
-  c.mesh = [('data', -1)]
-  c.sharding_strategy = [('.*', 'fsdp(axis="data")')]
-  c.sharding_rules = [('act_batch', ('data',))]
+    # Debug mode settings
+    if config.debug:
+        config = config_utils.setup_debug_config(config)
+
+    return config
