@@ -74,24 +74,26 @@ def create_training_data_config(config, prefix=''):
         raise ValueError(f"Unknown dataset_name: {dataset_type}")
     
     input_config.pp = '|'.join(preprocessing_ops[dataset_type])
+    if dataset_type == 'cambrian_dataset':
+        input_config['data_dir'] = 'gs://us-central2-storage/tensorflow_datasets'
     input_config.batch_size = config.batch_size
     return input_config
 
 def calculate_total_steps(config):
     """Calculate total steps based on epoch, total_steps, or total_samples."""
-    if sum(x > 0 for x in [config.epoch, config.total_samples, config.total_steps]) > 1:
+    if sum(x >= 0 for x in [config.epoch, config.total_samples, config.total_steps]) > 1:
         raise ValueError("Only one of epoch, total_samples, or total_steps can be specified")
 
-    if config.total_steps > 0:
+    if config.total_steps >= 0:
         return config.total_steps
         
-    if config.epoch > 0:
+    if config.epoch >= 0:
         dataset_base = config.dataset_name.split(":")[0]
         if dataset_base not in DATASET_SIZES:
             raise ValueError(f"Unknown dataset: {dataset_base}")
         return int(DATASET_SIZES[dataset_base] * config.epoch / config.input.batch_size)
         
-    if config.total_samples > 0:
+    if config.total_samples >= 0:
         return int(config.total_samples * 1e9 / config.input.batch_size)
         
     raise ValueError("Must specify either total_steps, epoch, or total_samples")
@@ -196,7 +198,7 @@ def setup_model_config(config):
 
     # Handle LLM configurations
     llm_ckpt = 'gs://us-central2-storage/tensorflow_datasets/gemma2b.npz'
-    config.schedule_base = {'decay_type': 'cosine', 'warmup_percent': 0.03}
+    config.schedule_base = {'decay_type': 'cosine', 'warmup_percent': config.warmup_percent}
     config.schedule = [
         ('img/.*', None if config.freeze_vit else config.schedule_base),
         ('llm/.*', None if config.freeze_llm else config.schedule_base),
@@ -277,7 +279,7 @@ def setup_model_config(config):
             raise ValueError(f"Unknown llm_ckpt: {config.llm_ckpt}")
 
     # Set model initialization if llm_ckpt is provided
-    if llm_ckpt is not None and isinstance(config.model_init, dict):
+    if llm_ckpt is not None and isinstance(config.model_init, ConfigDict):
         config.model_init['llm'] = llm_ckpt
             
     return config
@@ -339,7 +341,7 @@ def setup_debug_config(config):
     """Setup debug configuration with flexible options."""
     config.wandb = False
     
-    if config.eval_only:
+    if config.debug_eval_only:
         config.total_steps = 0
         config.lr = 0.0
         config.wd = 0.0
@@ -347,16 +349,18 @@ def setup_debug_config(config):
         config.input.shuffle_buffer_size = None
         config.input.batch_size = 32
         config.total_steps = 10
+        config.epoch = -1.0
+        config.total_samples = -1
         config.schedule = [('.*', dict(decay_type='cosine', warmup_steps=3))]
         config.log_training_steps = 1
     
-    if not config.eval_when_debugging:
+    if not config.debug_eval_when_debugging:
         config.evals = {}
     else:
         for k in config.evals:
             config.evals[k]['batch_size'] = 32
     
-    if config.tiny_model:
+    if config.debug_tiny_model:
         config.model.img = dict(variant='mu/16', pool_type='none')
         config.model.llm = dict(variant='gemma_debug')
         config.model_init = None

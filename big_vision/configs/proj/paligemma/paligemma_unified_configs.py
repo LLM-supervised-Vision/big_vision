@@ -37,6 +37,7 @@ def get_config(arg=None):
         epoch=-1.0,
         total_steps=-1,
         total_samples=-1,
+        warmup_percent=0.03,
         batch_size=16384,
         dtype='bfloat16', # 'float32', 'bfloat16'
         
