@@ -106,7 +106,6 @@ def get_config(arg=None):
       batch_size=8192, total_samples=3.0, dtype='float32',
       debug=False, 
   )
-  c.name = 'what the hell is this???'
 
   # Input section
   c.input = training_data(c.res, prefix='', text_len=c.llm_text_len, dataset_name=c.dataset_name, org_caption_ratio=c.org_caption_ratio) # laion400m/images, datacomp_recap/10M:1.0.0
@@ -153,6 +152,7 @@ def get_config(arg=None):
   if c.llm_clean_vocab == False:
     c.model['llm']['vocab_size'] = 256_000 + 1024 + 128
 
+  # Checkpoint Loading Section
   dont_load = []
   if c.model.llm['head'] == 'map': dont_load += ['MAPHead.*']
   if c.model.llm['head'] == 'ffn': dont_load += ['FFNAdapter.*'] 
@@ -247,14 +247,13 @@ def get_config(arg=None):
   c.evals = {}
   add_eval(c, c.res, prefix='', batch_size=1024, mode=c.mode, text_len=c.llm_text_len)
 
-  if c.dataset_name.split("/")[0] == 'datacomp_recap':
-    assert "M" in c.dataset_name, "datacomp_recap dataset_name should have M in it"
+  if c.dataset_name.split("/")[0] == 'datacomp_recap' or c.dataset_name.split("/")[0] == 'cambrian_dataset':
+    assert "M" in c.dataset_name, "dataset_name should have M in it"
     epochs = c.epoch
-    match c.dataset_name.split("/")[1].split(":")[0]:
-      case '10M':
-        num_samples = 8344225
-      case '50M':
-        num_samples = 41598460
+    match c.dataset_name.split(":")[0]:
+      case 'datacomp_recap/10M': num_samples = 8_344_225
+      case 'datacomp_recap/50M': num_samples = 41_598_460
+      case 'cambrian_dataset/10M': num_samples = 9_784_414
       case _:
         raise ValueError(f"Unknown dataset_name: {c.dataset_name}")
     c.total_steps = int(num_samples * epochs / c.input.batch_size)

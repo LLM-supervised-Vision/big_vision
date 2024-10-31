@@ -1,3 +1,5 @@
+"""Configuration for PaLiGeMMA training."""
+
 import os
 import logging
 import json
@@ -7,185 +9,331 @@ from ml_collections import ConfigDict
 
 import big_vision.configs.common as bvcc
 from big_vision.configs.proj.image_text import common
-from big_vision.configs.proj.paligemma.transfers.common import combine_and_keep_train, combine_and_keep_eval, TOKENIZER
+from big_vision.configs.proj.paligemma.transfers.common import (
+    combine_and_keep_train,
+    combine_and_keep_eval,
+    cambrian_pp,
+    TOKENIZER
+)
 
-def training_data(dataset_name, caption_key, *, res=224, prefix='', text_len=64):
-  assert dataset_name.split('/')[0] in ['laion400m', 'datacomp_recap'], f'Unknown dataset_name: {dataset_name}'
-  c = bvcc.parse_arg('') 
-  c.data = dict(
-    name=dataset_name,
-    split='train',
-    data_dir='gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets'
-  )
-  c.pp = '|'.join([
-    f'decode|resize({res})|value_range(-1,1)',
-    f'strfmt("{prefix}", outkey="prefix")',
-    f'copy(inkey="{caption_key}", outkey="suffix")',
-    combine_and_keep_train(text_len),
-  ])
-  return c
+def create_training_data_config(res, prefix, text_len=64, dataset_name='laion400m/images', org_caption_ratio=0.5):
+    """Creates training data configuration.
+    
+    Args:
+        res: Image resolution
+        prefix: Text prefix for prompts
+        text_len: Maximum text length
+        dataset_name: Name of the dataset
+        org_caption_ratio: Ratio of original captions to use (for datacomp_recap)
+    """
+    config = bvcc.parse_arg('')
+    config.data = {
+        'name': dataset_name,
+        'split': 'train',
+        'data_dir': 'gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets'
+    }
+    
+    dataset_type = dataset_name.split("/")[0]
+    
+    preprocessing_ops = {
+        'laion400m': [
+            f'decode|resize({res})|value_range(-1,1)',
+            f'strfmt("{prefix}", outkey="prefix")',
+            'copy(inkey="caption", outkey="suffix")',
+            combine_and_keep_train(text_len),
+        ],
+        'datacomp_recap': [
+            f'decode|resize({res})|value_range(-1,1)',
+            f'strfmt("{prefix}", outkey="prefix")',
+            f'ratio_choice(inkey=["org_caption", "re_caption"], '
+            f'outkey="caption", ratios=[{org_caption_ratio}, {1-org_caption_ratio}])|'
+            f'copy(inkey="caption", outkey="suffix")',
+            combine_and_keep_train(text_len),
+        ],
+        'cambrian_dataset': [
+            f'decode|resize({res})|value_range(-1,1)',
+            cambrian_pp(text_len),
+        ]
+    }
+    
+    if dataset_type not in preprocessing_ops:
+        raise ValueError(f"Unknown dataset_name: {dataset_name}")
+        
+    if dataset_type == 'cambrian_dataset':
+        config.data['data_dir'] = 'gs://us-central2-storage/tensorflow_datasets'
+        
+    config.pp = '|'.join(preprocessing_ops[dataset_type])
+    
+    return config
 
-def add_eval(c, res, *, text_len=64, prefix, mode, **kw):
-  if mode == "contrastive":
-    c.evals.retrieval_coco = common.get_coco(
-      pred='contrastive_logits',
-      pp_img=f'resize({res})|value_range(-1, 1)',
-      pp_txt='|'.join([
-        f'strfmt("{prefix}", outkey="prefix")',
-        'copy(inkey="texts", outkey="suffix")',
-        combine_and_keep_eval(text_len,eos='yes'),
-        f'copy(inkey="text", outkey="labels")',
-      ]),
-      log_steps=1000,
-    )
-    c.evals.retrieval_coco.update(kw)
+def setup_evaluation_config(config, res, text_len=64, prefix='', mode='contrastive', **kwargs):
+    """Sets up evaluation configuration based on training mode."""
+    if mode == "contrastive":
+        config.evals.retrieval_coco = common.get_coco(
+            pred='contrastive_logits',
+            pp_img=f'resize({res})|value_range(-1, 1)',
+            pp_txt='|'.join([
+                f'strfmt("{prefix}", outkey="prefix")',
+                'copy(inkey="texts", outkey="suffix")',
+                combine_and_keep_eval(text_len, eos='yes'),
+                f'copy(inkey="text", outkey="labels")',
+            ]),
+            log_steps=1000,
+            **kwargs
+        )
+        
+        config.evals.zeroshot_imagenet = common.get_disclf(
+            pred='contrastive_logits',
+            sz=res,
+            pp_txt='|'.join([
+                f'strfmt("{prefix}", outkey="prefix")',
+                'copy(inkey="texts", outkey="suffix")',
+                combine_and_keep_eval(text_len, eos='yes'),
+                f'copy(inkey="text", outkey="labels")',
+            ]),
+            dataset_names=('imagenet2012', 'imagenet_v2', 'imagenet2012_real'),
+            log_steps=1000,
+            **kwargs
+        )
+        
+    elif mode == "generative":
+        config.evals = {}
+        pp = '|'.join([
+            f'strfmt("{prefix}", outkey="prefix")',
+            'copy(inkey="label", outkey="suffix")',
+            combine_and_keep_eval(text_len, keep=('text', 'mask_ar')),
+            f'copy(inkey="text", outkey="labels")',
+        ])
+        config.evals['imagenet/scoring'] = {
+            'type': 'proj.paligemma.scoring_classifier',
+            'pred': 'score',
+            'log_percent': 0.1,
+            'data': {'name': 'imagenet2012', 'split': 'validation[:320]'},
+            'pp_fn': f'decode|resize({res})|keep("image", "label")',
+            'pp_txt': pp,
+        }
+    else:
+        raise ValueError(f"Unknown mode: {mode}")
 
-    c.evals.zeroshot_imagenet = common.get_disclf(
-      pred='contrastive_logits',
-      sz=res,
-      pp_txt='|'.join([
-        f'strfmt("{prefix}", outkey="prefix")',
-        'copy(inkey="texts", outkey="suffix")',
-        combine_and_keep_eval(text_len,eos='yes'),
-        f'copy(inkey="text", outkey="labels")',
-      ]),
-      dataset_names=('imagenet2012','imagenet_v2','imagenet2012_real'),
-      log_steps=1000,
-    )
-    c.evals.zeroshot_imagenet.update(kw)
-
-  elif mode == "generative":
-    c.evals = {}
-  #   pp = '|'.join([
-  #       f'strfmt("{prefix}", outkey="prefix")',
-  #       'copy(inkey="label", outkey="suffix")',
-  #       combine_and_keep_eval(text_len, keep=('text', 'mask_ar')),
-  #       f'copy(inkey="text", outkey="labels")',
-  #   ])
-  #   c.evals['imagenet/scoring'] = dict(
-  #     type='proj.cappa.scoring_classifier',
-  #     pred='score',
-  #     log_percent=0.1,
-  #     data=dict(name='imagenet2012', split='validation'),
-  #     pp_fn=f'decode|resize({res})|keep("image", "label")',
-  #     pp_txt=pp,
-  #   )
-  else:
-    raise ValueError(f"Unknown mode: {mode}")
-
-backbone_dict = {
-  'gemma_2b': 'gs://us-central2-storage/tensorflow_datasets/gemma2b.npz',
-  'clip': 'gs://us-central2-storage/tensorflow_datasets/vit-b-16_3b_pretraining/clip_bs16384_warm0.03_lr1e-3_wd1e-4_bf16_qknorm-F_b2-0.95_12lyr_07-25_1415',
-  'gemma_supervised': 'gs://us-central2-storage/tensorflow_datasets/mllm_ckpts/paligemma/gemma2b-partial_frozen99-0.01-gap_b16-F_contrastive_bs16k_s3b_lr1e-3_wd1e-4_bf16_09-01_0446',
-}
+def setup_model_config(config):
+    """Sets up model configuration including initialization and loading."""
+    dont_load = []
+    if config.model.llm['head'] == 'map':
+        dont_load.append('MAPHead.*')
+    if config.model.llm['head'] == 'ffn':
+        dont_load.append('FFNAdapter.*')
+    if config.model.llm['projection']:
+        dont_load.append('head/.*')
+        
+    config.model_load = {
+        'img_load_kw': {},
+        'llm_load_kw': {'dont_load': dont_load}
+    }
+    
+    llm_ckpt_configs = {
+        'full': {},
+        'half': {
+            'variant': 'gemma_2b_half',
+            'ckpt_path': '/home/austinwang/gemma2b_half.npz',
+            'extra_dont_load': ['final_norm/scale']
+        },
+        '6lyr': {
+            'variant': 'gemma_6lyr',
+            'ckpt_path': '/home/austinwang/gemma2b_first_6.npz',
+            'extra_dont_load': ['final_norm/scale']
+        },
+        'adapter': {
+            'schedule_override': [
+                ('img/.*', None if config.freeze_vit else config.schedule_base),
+                ('.*Adapter/.*', config.schedule_base),
+                ('t', config.schedule_base),
+                ('.*', None),
+            ]
+        }
+    }
+    
+    # Handle special frozen cases
+    if ':' in config.llm_ckpt:
+        base_type, lyrs_frozen = config.llm_ckpt.split(':')
+        if base_type in ('partial_frozen', 'scratch-partial_frozen'):
+            config.model.llm['lyrs_frozen'] = int(lyrs_frozen)
+            if not config.freeze_llm:
+                config.schedule = [
+                    ('img/.*', None if config.freeze_vit else config.schedule_base),
+                    ('llm/layers/frozen/.*', None),
+                    ('.*', config.schedule_base),
+                ]
+    
+    # Apply config based on llm_ckpt type
+    ckpt_type = config.llm_ckpt.split(':')[0] if ':' in config.llm_ckpt else config.llm_ckpt
+    if ckpt_type in llm_ckpt_configs:
+        cfg = llm_ckpt_configs[ckpt_type]
+        if 'variant' in cfg:
+            config.model.llm['variant'] = cfg['variant']
+        if 'ckpt_path' in cfg:
+            config.llm_ckpt_path = cfg['ckpt_path']
+            if 'extra_dont_load' in cfg:
+                config.model_load['llm_load_kw']['dont_load'].extend(cfg['extra_dont_load'])
+        if 'schedule_override' in cfg:
+            config.schedule = cfg['schedule_override']
+    elif ckpt_type == 'scratch':
+        config.model_init = None
+        config.model_load = {}
 
 def get_config(arg=None):
-  c = bvcc.parse_arg(
-    arg,
-    objective='contrastive', loss_fn='softmax', lr=1e-3, wd=1e-4, batch_size=16384, total_epochs=-1, total_samples=-1.0,
-    training_mode='pretrain', res=224, dataset_name='laion400m/images', caption_key='caption',
-    img_variant='B/16', img_trainable='full', img_beit_init=False, img_qknorm=False,
-    llm_variant='gemma_2b', llm_trainable='full', llm_head='none', llm_lr_mult=0.1, llm_dropout=0.0, llm_clean_vocab=False, llm_projection=False, llm_text_len=64, 
-    drop_path_rate=0.0, dtype='float32',
-    debug=False,
-	)
-  
-	# Input Data Section
-  c.input = training_data(dataset_name=c.dataset_name, caption_key=c.caption_key, res=c.res, prefix='', text_len=c.llm_text_len)
-  c.input.batch_size = c.batch_size
-  if c.total_epochs > 0:
-    assert c.total_samples < 0, "total_epochs and total_samples cannot be specified together"
-    c.total_steps = c.total_epochs * c.input.total_samples // c.batch_size
-  elif c.total_samples > 0:
-    c.total_steps = c.total_samples // c.batch_size
-  else:
-    raise ValueError("Either total_epochs or total_samples must be specified")
-  
-  # Model Config Section
-  c.model_name = 'proj.paligemma.paligemma'
-  c.model = dict(
-    temperature_init = 1/0.07 if c.loss_fn == 'softmax' else 10.0,
-    bias_init = None if c.loss_fn == 'softmax' else -10.0,
-  )
-  c.model.img = dict(
-    variant=c.img_variant,
-    posemb='learn', rep_size=False, dropout=0.0, pool_type='none', 
-    head_zeroinit=False, beit_init=c.img_beit_init, mask=None, normalize_qk=c.img_qknorm, scan=True, 
-    remat_policy='nothing_saveable', dtype_mm=c.dtype, proj_bias=False, drop_path_rate=c.drop_path_rate,
-  )
-  c.model.llm = dict(
-    variant=c.llm_variant, 
-    scan=True, remat_policy='nothing_saveable', vocab_size=None, dropout=c.llm_dropout, 
-    dropout_bdims=(), cache_dtype=None, dtype=c.dtype, lyrs_frozen=-1, head=c.llm_head, 
-    projection=c.llm_projection, proj_bias=False, drop_path_rate=c.drop_path_rate,
-  )
-  if not c.llm_clean_vocab: c.model.llm['vocab_size'] = 256_000 + 1024 + 128
-  if c.loss_fn == 'sigmoid': c.model.img['proj_bias'], c.model.llm['proj_bias'] = True, True
-  if 'partial_frozen:' in c.llm_trainable: 
-    c.llm_trainable, lyrs_frozen = c.llm_trainable.split(':')
-    c.model.llm['lyrs_frozen'] = int(lyrs_frozen)
+    """Creates the main configuration."""
+    config = bvcc.parse_arg(
+        arg,
+        # Default values
+        res=224,
+        mode='generative',
+        loss_fn='softmax',
+        dataset_name='laion400m/images',
+        drop_path_rate=0.0,
+        lr=1e-3,
+        wd=1e-4,
+        org_caption_ratio=1.0,
+        datacomp_backbone='gemma_supervised',
+        epoch=5.0,
+        
+        # Vision model params
+        freeze_vit=False,
+        img_variant='B/16',
+        img_beit_init=False,
+        img_qknorm=False,
+        
+        # Language model params
+        freeze_llm=True,
+        llm_variant='gemma_2b',
+        llm_ckpt="full",
+        llm_head='none',
+        llm_lr_mult=0.1,
+        llm_dropout=0.0,
+        llm_clean_vocab=False,
+        llm_projection=False,
+        llm_text_len=64,
+        
+        # Training params
+        batch_size=8192,
+        total_samples=3.0,
+        dtype='float32',
+        debug=False,
+    )
 
-  # Model Initialization Section
-  c.model_init = {'img': None, 'llm': None}
-  if c.training_mode.split('_')[0] == 'pretrain':
-    # model = scratch vit + pre-trained gemma_2b
-    llm_backbone = backbone_dict[c.llm_variant]
-    c.model_init['llm'] = llm_backbone
-  elif c.training_mode.split('_')[0] == 'finetune': 
-    assert c.training_mode.split('_')[1] in ['clip+llm','gemma_supervised'], f'Unknown training_mode: {c.training_mode}'
-    backbone = backbone_dict[c.training_mode.split('_')[1]]
-    ckpt_cfg_path = f'{backbone}/config.json'
-    ckpt_cfg = ml_collections.ConfigDict(json.load(tf.io.gfile.GFile(ckpt_cfg_path, 'r')))
-    if backbone == 'gemma_supervised':
-      c.model_init = f"{backbone}/checkpoint.bv-{ckpt_cfg.total_steps:09d}"
-      c.model = ckpt_cfg.model
-    elif backbone == 'clip+llm':
-      c.model_init['img'] = f"{backbone}/checkpoint.bv-{ckpt_cfg.total_steps:09d}:img"
-      c.model.img = ckpt_cfg.model.image
-      c.model.img['pool_type'] = 'none'
+    # Setup input pipeline
+    config.input = create_training_data_config(
+        config.res,
+        prefix='',
+        text_len=config.llm_text_len,
+        dataset_name=config.dataset_name,
+        org_caption_ratio=config.org_caption_ratio
+    )
 
-  # model_load
-  dont_load = []
-  if c.model.llm['head'] == 'map': dont_load += ['MAPHead.*']
-  if c.model.llm['head'] == 'ffn': dont_load += ['FFNAdapter.*'] 
-  if c.model.llm['projection']: dont_load += ['head/.*']
-  c.model_load = {'img_load_kw': {}, 'llm_load_kw': {'dont_load': dont_load}}
+    # Training parameters
+    config.input.batch_size = config.batch_size
+    config.total_steps = int(config.total_samples * 1e9 / config.input.batch_size)
+    
+    # Optimizer configuration
+    config.optax_name = 'scale_by_adam'
+    config.optax = {'b1': 0.9, 'b2': 0.95}
+    config.lr = config.lr
+    config.wd = config.wd
+    config.grad_clip_norm = 1.0
+    config.label_smoothing = 0.0
 
-
-  # Training Section
-
-  # schedule
-  sched = dict(decay_type='cosine', warmup_percent=0.03)
-  c.schedule = [('.*', sched)]
-  if not c.img_trainable == 'frozen' and not c.llm_trainable == 'frozen':
-    c.lr_mults = [
-      ('img/.*', 1.0),
-      ('llm/.*', c.llm_lr_mult),
-      ('t', 1.0),
+    # Learning rate schedule
+    config.schedule_base = {'decay_type': 'cosine', 'warmup_percent': 0.03}
+    config.schedule = [
+        ('img/.*', None if config.freeze_vit else config.schedule_base),
+        ('llm/.*', None if config.freeze_llm else config.schedule_base),
+        ('t', config.schedule_base),
     ]
-  match c.llm_trainable:
-    case 'full':
-      pass
-    case 'partial_frozen':
-      c.schedule = [
-        ('img/.*', None if c.freeze_vit else sched),
-        ('llm/layers/frozen/.*', None),
-        ('.*', sched),
-      ]
-    case 'adapter':
-      # Unfreeze the adapter only for llm
-      assert c.llm_head == 'ffn', "adapter is for ffn head"
-      assert c.llm_projection == False, "adapter is for ffn head"
-      c.schedule = [
-        ('img/.*', None if c.freeze_vit else sched),
-        ('.*Adapter/.*', sched),
-        ('t', sched),
-        ('.*', None),
-      ]
-    case _:
-      raise ValueError(f"Unknown llm_trainable: {c.llm_trainable}")
+    
+    if not config.freeze_vit and not config.freeze_llm:
+        config.lr_mults = [
+            ('img/.*', 1.0),
+            ('llm/.*', config.llm_lr_mult),
+            ('t', 1.0),
+        ]
 
-  # FSDP strategy.
-  c.mesh = [('data', -1)]
-  c.sharding_strategy = [('.*', 'fsdp(axis="data")')]
-  c.sharding_rules = [('act_batch', ('data',))]
+    # Model configuration
+    config.model_name = 'proj.paligemma.paligemma'
+    config.model = {
+        'temperature_init': 1/0.07 if config.loss_fn == 'softmax' else 10.0,
+        'bias_init': None if config.loss_fn == 'softmax' else -10.0,
+        'img': {
+            'variant': config.img_variant,
+            'scan': True,
+            'dtype_mm': config.dtype,
+            'pool_type': 'none',
+            'head_zeroinit': False,
+            'beit_init': config.img_beit_init,
+            'drop_path_rate': config.drop_path_rate,
+            'normalize_qk': config.img_qknorm,
+        },
+        'llm': {
+            'variant': config.llm_variant,
+            'scan': True,
+            'dtype': config.dtype,
+            'dropout': config.llm_dropout,
+            'lyrs_frozen': -1,
+            'head': config.llm_head,
+            'projection': config.llm_projection,
+            'drop_path_rate': config.drop_path_rate,
+            'remat_policy': 'nothing_saveable',
+        }
+    }
+    
+    if not config.llm_clean_vocab:
+        config.model['llm']['vocab_size'] = 256_000 + 1024 + 128
+
+    # Setup model initialization and loading
+    setup_model_config(config)
+
+    # FSDP strategy configuration
+    config.mesh = [('data', -1)]
+    config.sharding_strategy = [('.*', 'fsdp(axis="data")')]
+    config.sharding_rules = [('act_batch', ('data',))]
+
+    # Misc configuration
+    config.input.shuffle_buffer_size = 50_000
+    config.log_training_steps = 50
+    config.ckpt_steps = 1_000
+    config.pp_modules = ['ops_general', 'ops_image', 'ops_text', 'proj.paligemma.ops']
+    config.seed = 0
+    config.wandb = not config.debug
+
+    # Setup evaluation
+    setup_evaluation_config(config, config.res, prefix='', mode=config.mode, text_len=config.llm_text_len)
+
+    # Handle dataset-specific configurations
+    if config.dataset_name.split("/")[0] in ['datacomp_recap', 'cambrian_dataset']:
+        dataset_sizes = {
+            'datacomp_recap/10M': 8_344_225,
+            'datacomp_recap/50M': 41_598_460,
+            'cambrian_dataset/10M': 9_784_414,
+        }
+        
+        dataset_base = config.dataset_name.split(":")[0]
+        if dataset_base not in dataset_sizes:
+            raise ValueError(f"Unknown dataset: {dataset_base}")
+            
+        config.total_steps = int(dataset_sizes[dataset_base] * config.epoch / config.input.batch_size)
+
+    # Debug mode settings
+    if config.debug:
+        config.wandb = False
+        config.input.shuffle_buffer_size = None
+        config.input.batch_size = 32
+        config.total_steps = 10
+        config.schedule = [('.*', dict(decay_type='cosine', warmup_steps=3))]
+        config.log_training_steps = 1
+        config.evals = {}
+        
+        # Use tiny model for debugging
+        config.model.img = dict(variant='mu/16', pool_type='none')
+        config.model.llm = dict(variant='gemma_debug')
+        config.model_init = None
+        config.model_load = {}
+
+    return config
