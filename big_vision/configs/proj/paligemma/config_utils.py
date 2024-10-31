@@ -33,7 +33,7 @@ def get_text_length(config):
     else: 
         return 64 # laion400m or datacomp_recap with org_caption=1.0
 
-def create_training_data_config(config):
+def create_training_data_config(config, prefix=''):
     """Creates training data configuration."""
     if not isinstance(config.res, int) or config.res <= 0:
         raise ValueError(f"Resolution must be a positive integer, got {config.res}")
@@ -52,13 +52,13 @@ def create_training_data_config(config):
     preprocessing_ops = {
         'laion400m': [
             f'decode|resize({config.res})|value_range(-1,1)',
-            'strfmt("", outkey="prefix")',
+            f'strfmt({prefix}, outkey="prefix")',
             'copy(inkey="caption", outkey="suffix")',
             combine_and_keep_train(config.llm_text_len),
         ],
         'datacomp_recap': [
             f'decode|resize({config.res})|value_range(-1,1)',
-            'strfmt("", outkey="prefix")',
+            f'strfmt({prefix}, outkey="prefix")',
             f'ratio_choice(inkey=["org_caption", "re_caption"], '
             f'outkey="caption", ratios=[{config.org_caption_ratio}, {1-config.org_caption_ratio}])|'
             f'copy(inkey="caption", outkey="suffix")',
@@ -97,12 +97,55 @@ def calculate_total_steps(config):
     raise ValueError("Must specify either total_steps, epoch, or total_samples")
 
 
-def setup_model_init_and_schedule(config):
-    """Setup model initialization and learning rate schedule based on training mode."""
+def setup_model_config(config):
+    """Setup model configuration, initialization, and training schedule.
+    
+    This function handles:
+    1. Training mode and learning rate setup
+    2. ViT initialization based on training mode and backbone choice
+    3. LLM configuration and checkpoint loading
+    4. Training schedule configuration
+    
+    Args:
+        config: Configuration object containing model settings
+    """
+
+    # Model configuration
+    config.model_name = 'proj.paligemma.paligemma'
+    config.model = {
+        'temperature_init': 1/0.07 if config.loss_fn == 'softmax' else 10.0,
+        'bias_init': None if config.loss_fn == 'softmax' else -10.0,
+        'img': {
+            'variant': config.img_variant,
+            'scan': True,
+            'dtype_mm': config.dtype,
+            'pool_type': 'none',
+            'head_zeroinit': False,
+            'beit_init': config.img_beit_init,
+            'drop_path_rate': config.drop_path_rate,
+            'normalize_qk': config.img_qknorm,
+        },
+        'llm': {
+            'variant': config.llm_variant,
+            'scan': True,
+            'dtype': config.dtype,
+            'dropout': config.llm_dropout,
+            'lyrs_frozen': -1,
+            'head': config.llm_head,
+            'projection': config.llm_projection,
+            'drop_path_rate': config.drop_path_rate,
+            'remat_policy': 'nothing_saveable',
+        }
+    }
+    
+    if not config.llm_clean_vocab:
+        config.model['llm']['vocab_size'] = 256_000 + 1024 + 128
+    
+    # Validate training mode
     if config.train_mode not in ['pretrain', 'finetune']:
         raise ValueError(f"train_mode must be 'pretrain' or 'finetune', got {config.train_mode}")
     
-    # Set learning rates based on training mode
+    # Set learning rate multipliers based on training mode
     vit_lr_mult = 1.0 if config.train_mode == 'pretrain' else 0.1
     config.lr_mults = [
         ('img/.*', vit_lr_mult),
@@ -110,50 +153,7 @@ def setup_model_init_and_schedule(config):
         ('t', 1.0),
     ]
     
-    # Handle ViT initialization based on training mode
-    if config.train_mode == 'pretrain':
-        if config.vit_backbone is not None:
-            raise ValueError("vit_backbone should be None for pretraining (random initialization)")
-        config.model_init = {'img': None, 'llm': None}  # Will be set by setup_model_config for LLM
-    else:  # finetune
-        if not config.vit_backbone:
-            # Handle backbone selection for finetuning
-            if config.datacomp_backbone == 'gemma_supervised':
-                backbone = ("gs://us-central2-storage/tensorflow_datasets/mllm_ckpts/paligemma/"
-                           "gemma2b-partial_frozen99-0.01-gap_b16-F_contrastive_bs16k_s3b_lr1e-3_wd1e-4_bf16_09-01_0446")
-                ckpt_cfg_path = f'{backbone}/config.json'
-                ckpt_cfg = ml_collections.ConfigDict(json.load(tf.io.gfile.GFile(ckpt_cfg_path, 'r')))
-                config.model_init = f"{backbone}/checkpoint.bv-{ckpt_cfg.total_steps:09d}"
-                config.model = ckpt_cfg.model
-            elif config.datacomp_backbone == 'clip+llm':
-                backbone = ("gs://us-central2-storage/tensorflow_datasets/vit-b-16_3b_pretraining/"
-                           "clip_bs16384_warm0.03_lr1e-3_wd1e-4_bf16_qknorm-F_b2-0.95_12lyr_07-25_1415")
-                ckpt_cfg_path = f'{backbone}/config.json'
-                ckpt_cfg = ml_collections.ConfigDict(json.load(tf.io.gfile.GFile(ckpt_cfg_path, 'r')))
-                config.model_init = {'img': f"{backbone}/checkpoint.bv-{ckpt_cfg.total_steps:09d}:img", 'llm': None}
-                config.model.img = ckpt_cfg.model.image
-                config.model.img['pool_type'] = 'none'
-                if not hasattr(config, 'model_load') or config.model_load is None:
-                    config.model_load = {'img_load_kw': {'dont_load': ['head/.*']}}
-                else:
-                    config.model_load['img_load_kw'] = {'dont_load': ['head/.*']}
-            else:
-                raise ValueError("For finetuning, either vit_backbone or datacomp_backbone must be specified")
-    return config
-
-def setup_model_config(config):
-    """Setup model checkpoint loading and initialization configuration.
-    
-    Args:
-        config: Configuration object containing model settings
-        
-    The function handles:
-    1. Setting up checkpoint loading rules (what to load/not load)
-    2. Configuring model initialization paths
-    3. Handling special LLM configurations (half/6lyr/adapter etc.)
-    4. Setting up training schedules for different components
-    """
-    # Initialize checkpoint don't load rules
+    # Initialize model loading configuration
     dont_load = []
     if config.model.llm['head'] == 'map':
         dont_load.append('MAPHead.*')
@@ -167,17 +167,47 @@ def setup_model_config(config):
         'llm_load_kw': {'dont_load': dont_load}
     }
 
-    # Default LLM checkpoint path
-    llm_ckpt = 'gs://us-central2-storage/tensorflow_datasets/gemma2b.npz'
+    # Handle ViT initialization based on training mode
+    if config.train_mode == 'pretrain':
+        if config.vit_backbone is not None:
+            raise ValueError("vit_backbone should be None for pretraining (random initialization)")
+        config.model_init = {'img': None, 'llm': None}  # LLM init will be set later
+    else:  # finetune
+        if config.vit_backbone not in ['gemma_supervised', 'clip+llm']:
+            raise ValueError("For finetuning, vit_backbone must be either 'gemma_supervised' or 'clip+llm'")
+            
+        # Set up ViT backbone
+        if config.vit_backbone == 'gemma_supervised':
+            backbone = ("gs://us-central2-storage/tensorflow_datasets/mllm_ckpts/paligemma/"
+                       "gemma2b-partial_frozen99-0.01-gap_b16-F_contrastive_bs16k_s3b_lr1e-3_wd1e-4_bf16_09-01_0446")
+            ckpt_cfg_path = f'{backbone}/config.json'
+            ckpt_cfg = ml_collections.ConfigDict(json.load(tf.io.gfile.GFile(ckpt_cfg_path, 'r')))
+            config.model_init = f"{backbone}/checkpoint.bv-{ckpt_cfg.total_steps:09d}"
+            config.model = ckpt_cfg.model
+        else:  # clip+llm
+            backbone = ("gs://us-central2-storage/tensorflow_datasets/vit-b-16_3b_pretraining/"
+                       "clip_bs16384_warm0.03_lr1e-3_wd1e-4_bf16_qknorm-F_b2-0.95_12lyr_07-25_1415")
+            ckpt_cfg_path = f'{backbone}/config.json'
+            ckpt_cfg = ml_collections.ConfigDict(json.load(tf.io.gfile.GFile(ckpt_cfg_path, 'r')))
+            config.model_init = {'img': f"{backbone}/checkpoint.bv-{ckpt_cfg.total_steps:09d}:img", 'llm': None}
+            config.model.img = ckpt_cfg.model.image
+            config.model.img['pool_type'] = 'none'
+            config.model_load['img_load_kw'] = {'dont_load': ['head/.*']}
 
     # Handle LLM configurations
+    llm_ckpt = 'gs://us-central2-storage/tensorflow_datasets/gemma2b.npz'
+    config.schedule_base = {'decay_type': 'cosine', 'warmup_percent': 0.03}
+    config.schedule = [
+        ('img/.*', None if config.freeze_vit else config.schedule_base),
+        ('llm/.*', None if config.freeze_llm else config.schedule_base),
+        ('t', config.schedule_base),
+    ]
+
     if ':' in config.llm_ckpt:
         base_type, lyrs_frozen = config.llm_ckpt.split(':')
         config.llm_ckpt = base_type
         
         if base_type in ('partial_frozen', 'scratch-partial_frozen'):
-            if not isinstance(lyrs_frozen, int):
-                raise ValueError(f"lyrs_frozen must be an integer, got {lyrs_frozen}")
             config.model.llm['lyrs_frozen'] = int(lyrs_frozen)
             if not config.freeze_llm:
                 config.schedule = [
@@ -202,7 +232,7 @@ def setup_model_config(config):
             config.model_load['llm_load_kw']['dont_load'].append('final_norm/scale')
         
         case 'partial_frozen':
-            assert config.freeze_llm == False, "partial_frozen is for unfreezing"
+            assert not config.freeze_llm, "partial_frozen is for unfreezing"
             config.schedule = [
                 ('img/.*', None if config.freeze_vit else config.schedule_base),
                 ('llm/layers/frozen/.*', None),
@@ -210,8 +240,7 @@ def setup_model_config(config):
             ]
         
         case 'ln':
-            # unfreeze the layer norm only for llm
-            assert config.freeze_llm == False, "ln is for unfreezing"
+            assert not config.freeze_llm, "ln is for unfreezing"
             config.schedule = [
                 ('img/.*', None if config.freeze_vit else config.schedule_base),
                 ('.*norm/.*', config.schedule_base),
@@ -227,7 +256,7 @@ def setup_model_config(config):
             llm_ckpt = None
             config.model_init = None
             config.model_load = {}
-            assert config.freeze_llm == False, "scratch-partial_frozen is for unfreezing"
+            assert not config.freeze_llm, "scratch-partial_frozen is for unfreezing"
             config.schedule = [
                 ('img/.*', None if config.freeze_vit else config.schedule_base),
                 ('llm/layers/frozen/.*', None),
@@ -235,9 +264,8 @@ def setup_model_config(config):
             ]
         
         case 'adapter':
-            # Unfreeze the adapter only for llm
             assert config.llm_head == 'ffn', "adapter is for ffn head"
-            assert config.llm_projection == False, "adapter is for ffn head"
+            assert not config.llm_projection, "adapter is for ffn head"
             config.schedule = [
                 ('img/.*', None if config.freeze_vit else config.schedule_base),
                 ('.*Adapter/.*', config.schedule_base),
@@ -249,42 +277,13 @@ def setup_model_config(config):
             raise ValueError(f"Unknown llm_ckpt: {config.llm_ckpt}")
 
     # Set model initialization if llm_ckpt is provided
-    if llm_ckpt is not None:
-        # Respect existing img initialization for finetuning
-        if hasattr(config, 'model_init') and isinstance(config.model_init, dict):
-            config.model_init['llm'] = llm_ckpt
-        else:
-            config.model_init = {'img': None, 'llm': llm_ckpt}
-
-    # Handle dataset-specific model configurations
-    if config.dataset_name.startswith('datacomp_recap') or config.dataset_name.startswith('cambrian_dataset'):
-        if 'M' not in config.dataset_name:
-            raise ValueError("dataset_name should have M in it for datacomp or cambrian datasets")
+    if llm_ckpt is not None and isinstance(config.model_init, dict):
+        config.model_init['llm'] = llm_ckpt
             
-        if config.datacomp_backbone == 'gemma_supervised':
-            backbone = ("gs://us-central2-storage/tensorflow_datasets/mllm_ckpts/paligemma/"
-                       "gemma2b-partial_frozen99-0.01-gap_b16-F_contrastive_bs16k_s3b_lr1e-3_wd1e-4_bf16_09-01_0446")
-            ckpt_cfg_path = f'{backbone}/config.json'
-            ckpt_cfg = ml_collections.ConfigDict(json.load(tf.io.gfile.GFile(ckpt_cfg_path, 'r')))
-            config.model_init = f"{backbone}/checkpoint.bv-{ckpt_cfg.total_steps:09d}"
-            config.model = ckpt_cfg.model
-        
-        elif config.datacomp_backbone == 'clip+llm':
-            backbone = ("gs://us-central2-storage/tensorflow_datasets/vit-b-16_3b_pretraining/"
-                       "clip_bs16384_warm0.03_lr1e-3_wd1e-4_bf16_qknorm-F_b2-0.95_12lyr_07-25_1415")
-            ckpt_cfg_path = f'{backbone}/config.json'
-            ckpt_cfg = ml_collections.ConfigDict(json.load(tf.io.gfile.GFile(ckpt_cfg_path, 'r')))
-            config.model_init['img'] = f"{backbone}/checkpoint.bv-{ckpt_cfg.total_steps:09d}:img"
-            config.model.img = ckpt_cfg.model.image
-            config.model.img['pool_type'] = 'none'
-            if not hasattr(config, 'model_load') or config.model_load is None:
-                config.model_load = {'img_load_kw': {'dont_load': ['head/.*']}}
-            else:
-                config.model_load['img_load_kw'] = {'dont_load': ['head/.*']}
     return config
 
 
-def setup_evaluation_config(config):
+def setup_evaluation_config(config, prefix=''):
     """Sets up evaluation configuration based on training mode."""
     if config.mode not in ['contrastive', 'generative']:
         raise ValueError(f"mode must be 'contrastive' or 'generative', got {config.mode}")
@@ -295,7 +294,7 @@ def setup_evaluation_config(config):
             pred='contrastive_logits',
             pp_img=f'resize({config.res})|value_range(-1, 1)',
             pp_txt='|'.join([
-                'strfmt("", outkey="prefix")',
+                f'strfmt({prefix}, outkey="prefix")',
                 'copy(inkey="texts", outkey="suffix")',
                 combine_and_keep_eval(config.llm_text_len, eos='yes'),
                 'copy(inkey="text", outkey="labels")',
@@ -307,7 +306,7 @@ def setup_evaluation_config(config):
             pred='contrastive_logits',
             sz=config.res,
             pp_txt='|'.join([
-                'strfmt("", outkey="prefix")',
+                f'strfmt({prefix}, outkey="prefix")',
                 'copy(inkey="texts", outkey="suffix")',
                 combine_and_keep_eval(config.llm_text_len, eos='yes'),
                 'copy(inkey="text", outkey="labels")',
@@ -319,7 +318,7 @@ def setup_evaluation_config(config):
     else:  # generative
         config.evals = {}
         pp = '|'.join([
-            'strfmt("", outkey="prefix")',
+            f'strfmt({prefix}, outkey="prefix")',
             'copy(inkey="label", outkey="suffix")',
             combine_and_keep_eval(config.llm_text_len, keep=('text', 'mask_ar')),
             'copy(inkey="text", outkey="labels")',
@@ -336,11 +335,11 @@ def setup_evaluation_config(config):
     return config
 
 
-def setup_debug_config(config, eval_only=False, eval_when_debugging=False, tiny_model=False):
+def setup_debug_config(config):
     """Setup debug configuration with flexible options."""
     config.wandb = False
     
-    if eval_only:
+    if config.eval_only:
         config.total_steps = 0
         config.lr = 0.0
         config.wd = 0.0
@@ -351,13 +350,13 @@ def setup_debug_config(config, eval_only=False, eval_when_debugging=False, tiny_
         config.schedule = [('.*', dict(decay_type='cosine', warmup_steps=3))]
         config.log_training_steps = 1
     
-    if not eval_when_debugging:
+    if not config.eval_when_debugging:
         config.evals = {}
     else:
         for k in config.evals:
             config.evals[k]['batch_size'] = 32
     
-    if tiny_model:
+    if config.tiny_model:
         config.model.img = dict(variant='mu/16', pool_type='none')
         config.model.llm = dict(variant='gemma_debug')
         config.model_init = None

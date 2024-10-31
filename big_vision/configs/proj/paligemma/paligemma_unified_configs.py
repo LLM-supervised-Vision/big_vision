@@ -16,7 +16,6 @@ def get_config(arg=None):
         lr=1e-3,
         wd=1e-4,
         org_caption_ratio=1.0,
-        datacomp_backbone='gemma_supervised',
         epoch=-1.0,
         total_steps=-1,
         train_mode='pretrain',  # or 'finetune'
@@ -45,26 +44,14 @@ def get_config(arg=None):
         
         # Debug options
         debug=False,
-        # (only used when debug=True)
         debug_eval_only=False,
         debug_eval_when_debugging=False,
         debug_tiny_model=False,
     )
 
     # Setup input pipeline
-    config.llm_text_len = config_utils.get_text_length(config.dataset_name, config.org_caption_ratio)
-    config.input = config_utils.create_training_data_config(
-        config.res,
-        prefix='',
-        dataset_name=config.dataset_name,
-        org_caption_ratio=config.org_caption_ratio
-    )
-
-    # Training parameters
-    config.input.batch_size = config.batch_size
-    
-    # Calculate total steps
-    config.total_steps = config_utils.calculate_total_steps(config)
+    config.llm_text_len = config_utils.get_text_length(config)
+    config.input = config_utils.create_training_data_config(config, prefix='')
     
     # Optimizer configuration
     config.optax_name = 'scale_by_adam'
@@ -73,48 +60,7 @@ def get_config(arg=None):
     config.wd = config.wd
     config.grad_clip_norm = 1.0
     config.label_smoothing = 0.0
-
-    # Learning rate schedule
-    config.schedule_base = {'decay_type': 'cosine', 'warmup_percent': 0.03}
-    config.schedule = [
-        ('img/.*', None if config.freeze_vit else config.schedule_base),
-        ('llm/.*', None if config.freeze_llm else config.schedule_base),
-        ('t', config.schedule_base),
-    ]
-
-    # Setup model initialization and schedule based on training mode
-    config = config_utils.setup_model_init_and_schedule(config)
-
-    # Model configuration
-    config.model_name = 'proj.paligemma.paligemma'
-    config.model = {
-        'temperature_init': 1/0.07 if config.loss_fn == 'softmax' else 10.0,
-        'bias_init': None if config.loss_fn == 'softmax' else -10.0,
-        'img': {
-            'variant': config.img_variant,
-            'scan': True,
-            'dtype_mm': config.dtype,
-            'pool_type': 'none',
-            'head_zeroinit': False,
-            'beit_init': config.img_beit_init,
-            'drop_path_rate': config.drop_path_rate,
-            'normalize_qk': config.img_qknorm,
-        },
-        'llm': {
-            'variant': config.llm_variant,
-            'scan': True,
-            'dtype': config.dtype,
-            'dropout': config.llm_dropout,
-            'lyrs_frozen': -1,
-            'head': config.llm_head,
-            'projection': config.llm_projection,
-            'drop_path_rate': config.drop_path_rate,
-            'remat_policy': 'nothing_saveable',
-        }
-    }
-    
-    if not config.llm_clean_vocab:
-        config.model['llm']['vocab_size'] = 256_000 + 1024 + 128
+    config.total_steps = config_utils.calculate_total_steps(config)
 
     # Setup model initialization and loading
     config = config_utils.setup_model_config(config)
@@ -133,15 +79,10 @@ def get_config(arg=None):
     config.wandb = not config.debug
 
     # Setup evaluation
-    config = config_utils.setup_evaluation_config(config, config.res, prefix='', mode=config.mode, text_len=config.llm_text_len)
+    config = config_utils.setup_evaluation_config(config, prefix='')
 
     # Debug mode settings
     if config.debug:
-        config = config_utils.setup_debug_config(
-            config,
-            eval_only=config.debug_eval_only,
-            eval_when_debugging=config.debug_eval_when_debugging,
-            tiny_model=config.debug_tiny_model
-        )
+        config = config_utils.setup_debug_config(config)
 
     return config
