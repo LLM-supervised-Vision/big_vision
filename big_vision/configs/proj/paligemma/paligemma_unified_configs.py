@@ -10,37 +10,35 @@ def get_config(arg=None):
         # Default values
         res=224,
         mode='generative',
-        loss_fn='softmax',
-        dataset_name='laion400m/images',
-        drop_path_rate=0.0,
-        lr=1e-3,
-        wd=1e-4,
-        org_caption_ratio=1.0,
-        epoch=-1.0,
-        total_steps=-1,
         train_mode='pretrain',  # or 'finetune'
-        vit_backbone=None,
+        loss_fn='softmax',
+        dataset_name='laion400m/images', # laion400m/images, datacomp_recap/10M:1.0.0, datacomp_recap/50M:1.0.0, cambrian_dataset/10M:1.0.0,
+        org_caption_ratio=1.0, # only for datacomp_recap
         
-        # Vision model params
+        # Model configs
+        drop_path_rate=0.0,
         freeze_vit=False,
+        vit_backbone=None,
         img_variant='B/16',
         img_beit_init=False,
         img_qknorm=False,
-        
-        # Language model params
-        freeze_llm=True,
+        freeze_llm=False,
         llm_variant='gemma_2b',
-        llm_ckpt="full", # partial_frozen:9
-        llm_head='none',
-        llm_lr_mult=0.1,
+        llm_ckpt="partial_frozen:9", # partial_frozen:9, full
+        llm_head='gap', # 'none', 'gap', 'map'
+        llm_lr_mult=0.01, # 0.01, 0.1
         llm_dropout=0.0,
-        llm_clean_vocab=False,
-        llm_projection=False,
+        llm_clean_vocab=True,
+        llm_projection=True,
         
         # Training params
-        batch_size=8192,
-        total_samples=3.0,
-        dtype='float32',
+        lr=1e-3,
+        wd=1e-4,
+        epoch=-1.0,
+        total_steps=-1,
+        total_samples=-1,
+        batch_size=16384,
+        dtype='bfloat16', # 'float32', 'bfloat16'
         
         # Debug options
         debug=False,
