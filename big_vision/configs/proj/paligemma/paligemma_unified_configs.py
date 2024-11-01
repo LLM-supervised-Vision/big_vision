@@ -1,4 +1,4 @@
-"""Configuration for PaLiGeMMA training."""
+"""ponfiguration for PaLiGeMMA training."""
 
 import big_vision.configs.common as bvcc
 import big_vision.configs.proj.paligemma.config_utils as config_utils
@@ -50,7 +50,7 @@ def get_config(arg=None):
 
     # Setup input pipeline
     config.llm_text_len = config_utils.get_text_length(config)
-    config.input = config_utils.create_training_data_config(config, prefix='')
+    config.input = config_utils.create_training_data_config(config, prefix="")
     
     # Optimizer configuration
     config.optax_name = 'scale_by_adam'
@@ -78,7 +78,7 @@ def get_config(arg=None):
     config.wandb = not config.debug
 
     # Setup evaluation
-    config = config_utils.setup_evaluation_config(config, prefix='')
+    config = config_utils.setup_evaluation_config(config, prefix="")
 
     # Debug mode settings
     if config.debug:

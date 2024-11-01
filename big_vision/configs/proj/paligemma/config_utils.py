@@ -33,7 +33,7 @@ def get_text_length(config):
     else: 
         return 64 # laion400m or datacomp_recap with org_caption=1.0
 
-def create_training_data_config(config, prefix=''):
+def create_training_data_config(config, prefix=""):
     """Creates training data configuration."""
     if not isinstance(config.res, int) or config.res <= 0:
         raise ValueError(f"Resolution must be a positive integer, got {config.res}")
@@ -285,7 +285,7 @@ def setup_model_config(config):
     return config
 
 
-def setup_evaluation_config(config, prefix=''):
+def setup_evaluation_config(config, prefix=""):
     """Sets up evaluation configuration based on training mode."""
     if config.mode not in ['contrastive', 'generative']:
         raise ValueError(f"mode must be 'contrastive' or 'generative', got {config.mode}")
