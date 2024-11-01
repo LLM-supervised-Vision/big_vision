@@ -319,20 +319,20 @@ def setup_evaluation_config(config, prefix=""):
         
     else:  # generative
         config.evals = {}
-        pp = '|'.join([
-            f'strfmt({prefix}, outkey="prefix")',
-            'copy(inkey="label", outkey="suffix")',
-            combine_and_keep_eval(config.llm_text_len, keep=('text', 'mask_ar')),
-            'copy(inkey="text", outkey="labels")',
-        ])
-        config.evals['imagenet/scoring'] = {
-            'type': 'proj.paligemma.scoring_classifier',
-            'pred': 'score',
-            'log_percent': 0.1,
-            'data': {'name': 'imagenet2012', 'split': 'validation[:320]'},
-            'pp_fn': f'decode|resize({config.res})|keep("image", "label")',
-            'pp_txt': pp,
-        }
+        # pp = '|'.join([
+        #     f'strfmt({prefix}, outkey="prefix")',
+        #     'copy(inkey="label", outkey="suffix")',
+        #     combine_and_keep_eval(config.llm_text_len, keep=('text', 'mask_ar')),
+        #     'copy(inkey="text", outkey="labels")',
+        # ])
+        # config.evals['imagenet/scoring'] = {
+        #     'type': 'proj.paligemma.scoring_classifier',
+        #     'pred': 'score',
+        #     'log_percent': 0.1,
+        #     'data': {'name': 'imagenet2012', 'split': 'validation[:320]'},
+        #     'pp_fn': f'decode|resize({config.res})|keep("image", "label")',
+        #     'pp_txt': pp,
+        # }
     
     return config
 
