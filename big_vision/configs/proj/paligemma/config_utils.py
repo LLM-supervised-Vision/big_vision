@@ -27,7 +27,7 @@ def get_text_length(config):
     """Determine text length based on dataset and settings."""
     dataset_type = config.dataset_name.split("/")[0]
     if dataset_type == 'cambrian_dataset': 
-        return 384
+        return 320
     elif dataset_type == 'datacomp_recap' and config.org_caption_ratio < 1.0: 
         return 128
     else: 
