@@ -126,11 +126,12 @@ def main(argv):
   mw = u.BigVisionMetricWriter(xid, wid, workdir, config, gcs_write_frequency=100)
   # Initialize wandb.
   if config.get("wandb", False) and jax.process_index() == 0:
-    wandb.login(key='97c3b77fabd233d22d7b9a71319fce93f7400469')
+    # wandb.login(key='97c3b77fabd233d22d7b9a71319fce93f7400469')
+    # Please use the environment variable to login instead.
     tag = "paligemma"
     wandb.init(
-      project="cambrian_vlm",
-      entity="ziteng_wang",
+      project="llm-supervised-vision",
+      entity="nyu-visionx",
       tags=[tag],
       name=workdir.split("/")[-1] if workdir else f"{tag}_temp_experiment",
       job_type="train",
