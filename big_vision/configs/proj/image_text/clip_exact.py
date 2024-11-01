@@ -236,7 +236,7 @@ def get_config(arg=None):
         # config.loss_fn = ckpt_cfg.loss_fn
         # config.grad_clip_norm = ckpt_cfg.grad_clip_norm
         config.input.batch_size = 16384 # 32_768
-        epoch = 10
+        epoch = 30
         match arg.dataset_name.split("/")[1].split(":")[0]:
             case '10M':
                 num_samples = 8344225
